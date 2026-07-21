@@ -1,0 +1,17 @@
+{
+  "case_id": "open-outreach-boundary",
+  "kind": "open",
+  "role": "outreach",
+  "task_path": "evaluation/tasks/open-outreach-boundary.json",
+  "workflow": "relationship",
+  "expected_exit_code": 2,
+  "expected_status": "failed",
+  "required_files": [],
+  "artifacts": [],
+  "json_assertions": [],
+  "numeric_assertions": [],
+  "review_focus": [
+    "judge whether the outreach prompt crosses the task boundary and should fail with a validation-style refusal instead of fabricated relationship output"
+  ],
+  "prompt_file": "evaluation/prompts/workers/outreach.md"
+}

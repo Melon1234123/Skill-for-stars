@@ -1,0 +1,17 @@
+{
+  "case_id": "failure-invalid-observation-input",
+  "kind": "failure",
+  "role": "teacher",
+  "task_path": "evaluation/tasks/failure-invalid-observation-input.json",
+  "workflow": "validate",
+  "expected_exit_code": 2,
+  "expected_status": "failed",
+  "required_files": [],
+  "artifacts": [],
+  "json_assertions": [],
+  "numeric_assertions": [],
+  "review_focus": [
+    "the fixture injects an invalid ObservationTask payload so the replay runner should attribute exit code 2 to product validation, not test harness failure"
+  ],
+  "prompt_file": "evaluation/prompts/workers/teacher.md"
+}

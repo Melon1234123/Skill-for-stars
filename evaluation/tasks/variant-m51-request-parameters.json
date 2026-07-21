@@ -1,0 +1,11 @@
+{
+  "target_name": "M51",
+  "data_release": "DR18",
+  "ra_deg": 202.4696,
+  "dec_deg": 47.1952,
+  "scale_arcsec_per_pixel": 0.5,
+  "width": 768,
+  "height": 640,
+  "timeout_seconds": 45,
+  "max_bytes": 8000000
+}

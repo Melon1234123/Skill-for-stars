@@ -1,0 +1,27 @@
+{
+  "case_id": "variant-m51-request-parameters",
+  "kind": "variant",
+  "role": "research",
+  "task_path": "evaluation/tasks/variant-m51-request-parameters.json",
+  "workflow": "fetch-image",
+  "expected_exit_code": 0,
+  "expected_status": "success",
+  "required_files": ["image_metadata.json", "data/m51_sdss.jpg", "figures/m51_display.png"],
+  "artifacts": [
+    {"path": "image_metadata.json", "kind": "json"},
+    {"path": "data/m51_sdss.jpg", "kind": "image"},
+    {"path": "figures/m51_display.png", "kind": "image"}
+  ],
+  "json_assertions": [
+    {"file": "image_metadata.json", "pointer": "/source/database", "equals": "SDSS SkyServer"}
+  ],
+  "numeric_assertions": [
+    {"file": "image_metadata.json", "pointer": "/request/scale_arcsec_per_pixel", "expected": 0.5, "absolute_tolerance": 0.0001},
+    {"file": "image_metadata.json", "pointer": "/request/width", "expected": 768, "absolute_tolerance": 0},
+    {"file": "image_metadata.json", "pointer": "/request/height", "expected": 640, "absolute_tolerance": 0}
+  ],
+  "review_focus": [
+    "verify the research workflow remains bounded when width, height, or scale request parameters change within the documented schema"
+  ],
+  "prompt_file": "evaluation/prompts/workers/research.md"
+}

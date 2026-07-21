@@ -1,0 +1,20 @@
+{
+  "task_type": "observation_plan",
+  "target": "M42",
+  "observer": {
+    "location_name": "Beijing",
+    "longitude": 116.4074,
+    "latitude": 39.9042,
+    "timezone": "Asia/Shanghai"
+  },
+  "time_range": {
+    "start": "2026-01-10 18:00:00",
+    "end": "2026-01-11 02:00:00"
+  },
+  "interval_minutes": 10,
+  "output": {
+    "language": "zh-CN",
+    "level": "classroom",
+    "formats": ["json", "csv", "png", "md"]
+  }
+}

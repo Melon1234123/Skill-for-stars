@@ -6,6 +6,35 @@
 
 该技能包将观测计划生成、天象计算、公开数据查询、基础图像处理、可视化制图、过程记录和人工校验入口整理为 AI Ready 组件，使智能体能够在明确边界内调用天文工具、保存中间结果、输出可检查报告，并允许教师、科普讲解员或学生复核关键结论。
 
+## 当前实现状态
+
+项目第 1～7 天计划任务已经完成，当前仓库包含三个可以复现的真实案例：
+
+- 建立可安装的 Python `src/` 项目结构和 Pytest 测试环境。
+- 使用 Pydantic 定义 `observation_plan` 输入模型。
+- 校验目标、经纬度、IANA 时区、起止时间和采样间隔。
+- 提供北京 M42 观测任务的标准 JSON 示例。
+- 提供 `starskill validate` 命令和结构化校验错误。
+- 使用 Astroquery 0.4.11 接入 SIMBAD，输出标准名称、ICRS 坐标、类型、别名和来源。
+- 支持 M 编号、英文名和受控中文教学名称规范化，拒绝危险查询字符。
+- 提供 SHA-256 键控缓存、损坏缓存恢复和 30 秒服务超时。
+- 提供 `starskill resolve` 命令及 `target_resolved.json` 文件输出。
+- 使用 Astropy 7.2 计算目标、太阳和月亮的几何 AltAz 坐标。
+- 正确处理 `Asia/Shanghai` 跨午夜时间段，并同时保留本地时间与 UTC。
+- 按 10 分钟间隔输出固定 7 列的 `ephemeris.csv` 和带来源信息的 `ephemeris.json`。
+- 使用离线 IERS 数据和无大气折射设置，避免测试依赖实时网络。
+- 使用 Skyfield 1.53 与 DE421 独立抽查 3 个时刻、15 个角量。
+- 使用可配置的目标高度和太阳高度阈值生成连续候选观测窗口。
+- 输出月面照明比例、月亮高度和目标月亮角距，不用单一月光阈值武断判定。
+- 提供 `starskill plan` 命令、固定 10 列的 `visibility.csv` 和完整规划 JSON。
+- 使用 Matplotlib 3.10.9 的 Agg 后端生成固定 1800×900 高度角曲线。
+- 使用 `starskill run` 串联校验、SIMBAD 解析、星历、观测窗口、制图、报告与复核清单。
+- 在 `run.json` 中记录运行状态、依赖版本、来源、缓存命中、问题和产物 SHA-256。
+- 使用 Astropy 内置太阳系星历完成上海月亮—木星位置关系案例，并用 Skyfield/DE421 独立抽查。
+- 从 SDSS DR18 获取 M51 的 512×512 JPEG，实施超时、5 MB 大小上限、缓存、JPEG 校验和可追溯图像处理。
+- 提供可供智能体调用的 `skills/run-starskill` 技能包及 CLI 契约。
+- 完成 Markdown 技术报告；根据当前交付要求不制作展示 PPT。
+
 ## 选题价值
 
 天文实训常见流程通常包括选择目标、判断可观测时间、查询天体位置、下载公开数据、生成星图或图像、解释观测意义并整理成课堂或科普材料。现有工具虽然成熟，但存在以下痛点：
@@ -112,42 +141,91 @@ flowchart TD
 
 ## 安装与调用示例
 
-建议运行环境：
+当前可运行版本需要 Python 3.11 或更高版本。克隆仓库后执行：
 
-- Python 3.10 或更高版本。
-- 常用科学计算依赖：`numpy`、`pandas`、`matplotlib`。
-- 常用天文依赖：`astropy`、`astroquery`、`skyfield`。
-- 可选接口层：FastAPI、MCP server 或命令行封装。
-
-示例安装方式：
-
-```bash
-git clone <repo-url>
-cd starskill
+```powershell
 python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
+.venv\Scripts\Activate.ps1
+python -m pip install -e ".[dev]"
+python -m pytest
 ```
 
-示例命令行调用：
+macOS 或 Linux 的激活命令为 `source .venv/bin/activate`。
+
+校验文档中的 M42 示例：
 
 ```bash
-python -m starskill run examples/observation_m42_beijing.json
+python -m starskill validate examples/observation_m42_beijing.json
 ```
 
-示例智能体工具调用：
+校验成功时命令返回退出码 `0` 和补齐默认值后的 JSON。输入不符合 Schema 时返回退出码 `2`，并向标准错误输出结构化错误详情。
 
-```json
-{
-  "tool": "starskill.observation_planner",
-  "arguments": {
-    "target": "M42",
-    "location_name": "北京",
-    "date": "2026-01-10",
-    "time_range": "18:00-02:00",
-    "output_dir": "runs/m42_beijing_20260110"
-  }
-}
+通过 SIMBAD 解析目标并保存中间结果：
+
+```bash
+python -m starskill resolve M42 \
+  --cache-dir cache/targets \
+  --output runs/m42/intermediate/target_resolved.json
+```
+
+目标解析成功返回退出码 `0`；非法目标名返回 `2`；目标未找到返回 `3`；SIMBAD 服务失败返回 `4`。错误详情均以 JSON 写入标准错误。第 2 天的真实运行记录位于 `runs/day2_m42/intermediate/target_resolved.json`，检索说明位于 `docs/day2-target-resolver.md`。
+
+使用任务输入和目标解析结果计算星历：
+
+```bash
+python -m starskill ephemeris examples/observation_m42_beijing.json \
+  --target-file runs/day2_m42/intermediate/target_resolved.json \
+  --output runs/day3_m42/intermediate/ephemeris.csv \
+  --metadata runs/day3_m42/intermediate/ephemeris.json
+```
+
+该命令为北京 2026-01-10 18:00 至次日 02:00 生成 49 个采样点。第 3 天的计算说明位于 `docs/day3-ephemeris-calculator.md`。如需复现独立核验，先执行 `python -m pip install -e ".[validation]"`，再运行：
+
+```bash
+python scripts/verify_day3_skyfield.py \
+  examples/observation_m42_beijing.json \
+  runs/day2_m42/intermediate/target_resolved.json \
+  runs/day3_m42/verification/skyfield_crosscheck.csv
+```
+
+使用星历结果生成候选观测窗口和高度角曲线：
+
+```bash
+python -m starskill plan runs/day3_m42/intermediate/ephemeris.json \
+  --output runs/day4_m42/intermediate/visibility.csv \
+  --metadata runs/day4_m42/result.json \
+  --figure runs/day4_m42/figures/visibility_curve.png \
+  --min-target-altitude-deg 30 \
+  --max-sun-altitude-deg -12
+```
+
+默认规则包含阈值本身，即目标高度角等于 30 度、太阳高度角等于 -12 度时视为合格。M42 北京案例得到 19:40 至次日 01:20 的一个候选窗口；规则、月光证据、失败原因和图表说明见 `docs/day4-observation-planner.md`。
+
+一条命令运行 M42 观测闭环：
+
+```bash
+python -m starskill run examples/observation_m42_beijing.json \
+  --output-dir runs/day5_m42 \
+  --cache-dir cache/targets
+```
+
+计算上海月亮与木星的位置关系：
+
+```bash
+python -m starskill relationship examples/moon_jupiter_shanghai.json \
+  --output runs/day6_moon_jupiter/relationship.csv \
+  --metadata runs/day6_moon_jupiter/relationship.json
+```
+
+获取并处理 SDSS DR18 的 M51 图像：
+
+```bash
+python -m starskill fetch-image examples/m51_sdss_image.json \
+  --output-dir runs/day6_m51 \
+  --cache-dir cache/sdss
+```
+
+完整流水线的产物契约见 `docs/day5-pipeline.md`，两个扩展案例见 `docs/day6-public-data-and-cases.md`，技能包说明见 `docs/day7-skill-package.md`，最终总结见 `docs/final-technical-report.md`。
 ```
 
 ## 依赖来源与改造说明
@@ -158,7 +236,7 @@ python -m starskill run examples/observation_m42_beijing.json
 | --- | --- | --- | --- |
 | Astropy | 坐标、时间、单位和天文基础计算 | 开源 Python 天文核心库，遵循其官方许可证 | 封装为稳定的输入输出接口，隐藏复杂参数 |
 | Astroquery | 查询 SIMBAD、VizieR、MAST 等公开数据 | 开源查询工具，具体数据遵循对应数据库政策 | 增加查询缓存、来源记录和失败重试 |
-| Skyfield | 行星、月亮、太阳等天体位置计算 | 开源 Python 天文计算库 | 标准化为 `ephemeris_calculator` skill |
+| Skyfield | 独立核验目标、太阳和月亮位置 | 开源 Python 天文计算库 | 与 Astropy 结果交叉检查，不参与生产结果生成 |
 | Matplotlib | 曲线图、星图和教学图表 | 开源绘图库 | 固定图表模板和图注格式 |
 | 公开天文数据库 | 星表、图像和目标元数据 | 以各数据库公开说明和引用要求为准 | 保存查询参数、访问时间和来源链接 |
 
@@ -298,11 +376,10 @@ python -m starskill run examples/observation_m42_beijing.json
 ## 后续工程化方向
 
 - 将命令行入口进一步封装为 MCP server，使智能体可通过标准工具协议调用。
-- 为每个 skill 增加 JSON Schema，统一参数校验和错误返回。
-- 增加缓存目录，避免重复下载公开数据。
-- 将老旧 Notebook 拆分为可测试函数和示例任务。
+- 将输入模型导出为独立 JSON Schema，便于其他工具在调用前校验。
+- 增加更多公开数据源，并为短暂网络故障提供受控重试策略。
 - 为常见教学场景预置模板，例如月相观察、行星冲日、流星雨、深空天体入门观测。
-- 输出不超过 20 页的 PPT/PDF 技术报告，包含 skills 包说明、流程图、运行记录和源码说明。
+- 增加真实天气和场地地平线数据，但继续保留人工安全复核。
 
 ## 项目结论
 

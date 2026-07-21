@@ -1,0 +1,4 @@
+interface:
+  display_name: "Run StarSkill"
+  short_description: "Run reproducible astronomy training workflows"
+  default_prompt: "Use $run-starskill to run a reproducible astronomy observation or public-data workflow."

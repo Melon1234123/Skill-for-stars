@@ -1,0 +1,17 @@
+{
+  "case_id": "failure-sdss-invalid-response",
+  "kind": "failure",
+  "role": "research",
+  "task_path": "examples/m51_sdss_image.json",
+  "workflow": "fetch-image",
+  "expected_exit_code": 9,
+  "expected_status": "failed",
+  "required_files": [],
+  "artifacts": [],
+  "json_assertions": [],
+  "numeric_assertions": [],
+  "review_focus": [
+    "inject an invalid SDSS backend response fixture so the replay runner can distinguish malformed provider data from evaluator setup errors"
+  ],
+  "prompt_file": "evaluation/prompts/workers/research.md"
+}

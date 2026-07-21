@@ -1,0 +1,26 @@
+{
+  "case_id": "variant-moon-jupiter-interval",
+  "kind": "variant",
+  "role": "outreach",
+  "task_path": "evaluation/tasks/variant-moon-jupiter-interval.json",
+  "workflow": "relationship",
+  "expected_exit_code": 0,
+  "expected_status": "success",
+  "required_files": ["relationship.csv", "relationship.json"],
+  "artifacts": [
+    {"path": "relationship.csv", "kind": "csv"},
+    {"path": "relationship.json", "kind": "json"}
+  ],
+  "json_assertions": [
+    {"file": "relationship.json", "pointer": "/task/task_type", "equals": "solar_system_relationship"}
+  ],
+  "numeric_assertions": [],
+  "csv_assertions": [
+    {"file": "relationship.csv", "row": 0, "column": "moon_altitude_deg", "expected": 5.226, "absolute_tolerance": 0.002},
+    {"file": "relationship.csv", "row": 0, "column": "angular_separation_deg", "expected": 87.917, "absolute_tolerance": 0.002}
+  ],
+  "review_focus": [
+    "check that a different interval_minutes setting still produces interpretable outreach output"
+  ],
+  "prompt_file": "evaluation/prompts/workers/outreach.md"
+}

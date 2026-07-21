@@ -1,0 +1,15 @@
+{
+  "task_type": "solar_system_relationship",
+  "targets": ["moon", "jupiter"],
+  "observer": {
+    "location_name": "Shanghai",
+    "longitude": 121.4737,
+    "latitude": 31.2304,
+    "timezone": "Asia/Shanghai"
+  },
+  "time_range": {
+    "start": "2026-03-20 19:00:00",
+    "end": "2026-03-20 23:00:00"
+  },
+  "interval_minutes": 10
+}

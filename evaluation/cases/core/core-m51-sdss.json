@@ -1,0 +1,29 @@
+{
+  "case_id": "core-m51-sdss",
+  "kind": "core",
+  "role": "research",
+  "task_path": "examples/m51_sdss_image.json",
+  "workflow": "fetch-image",
+  "expected_exit_code": 0,
+  "expected_status": "success",
+  "required_files": ["image_metadata.json", "data/m51_sdss.jpg", "figures/m51_display.png"],
+  "artifacts": [
+    {"path": "image_metadata.json", "kind": "json"},
+    {"path": "data/m51_sdss.jpg", "kind": "image"},
+    {"path": "figures/m51_display.png", "kind": "image"}
+  ],
+  "json_assertions": [
+    {"file": "image_metadata.json", "pointer": "/request/target_name", "equals": "M51"},
+    {"file": "image_metadata.json", "pointer": "/source/database", "equals": "SDSS SkyServer"},
+    {"file": "image_metadata.json", "pointer": "/source/from_cache", "equals": false}
+  ],
+  "numeric_assertions": [
+    {"file": "image_metadata.json", "pointer": "/request/ra_deg", "expected": 202.4696, "absolute_tolerance": 0.0001},
+    {"file": "image_metadata.json", "pointer": "/request/scale_arcsec_per_pixel", "expected": 0.396, "absolute_tolerance": 0.0001}
+  ],
+  "review_focus": [
+    "verify the research workflow preserves SDSS provenance metadata",
+    "check both the source image and display image artifacts are expected outputs"
+  ],
+  "prompt_file": "evaluation/prompts/workers/research.md"
+}

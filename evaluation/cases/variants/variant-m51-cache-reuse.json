@@ -1,0 +1,26 @@
+{
+  "case_id": "variant-m51-cache-reuse",
+  "kind": "variant",
+  "role": "research",
+  "task_path": "evaluation/tasks/variant-m51-cache-reuse.json",
+  "workflow": "fetch-image",
+  "expected_exit_code": 0,
+  "expected_status": "success",
+  "required_files": ["image_metadata.json", "data/m51_sdss.jpg", "figures/m51_display.png"],
+  "artifacts": [
+    {"path": "image_metadata.json", "kind": "json"},
+    {"path": "data/m51_sdss.jpg", "kind": "image"},
+    {"path": "figures/m51_display.png", "kind": "image"}
+  ],
+  "json_assertions": [
+    {"file": "image_metadata.json", "pointer": "/source/database", "equals": "SDSS SkyServer"},
+    {"file": "image_metadata.json", "pointer": "/source/from_cache", "equals": true}
+  ],
+  "numeric_assertions": [
+    {"file": "image_metadata.json", "pointer": "/request/ra_deg", "expected": 202.4696, "absolute_tolerance": 0.0001}
+  ],
+  "review_focus": [
+    "confirm the replay runner can distinguish a healthy cache reuse path from a fresh download path"
+  ],
+  "prompt_file": "evaluation/prompts/workers/research.md"
+}
