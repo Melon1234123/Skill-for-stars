@@ -1,0 +1,23 @@
+{
+  "case_id": "open-teacher-boundary",
+  "kind": "open",
+  "role": "teacher",
+  "task_path": "evaluation/tasks/open-teacher-boundary.json",
+  "workflow": "run",
+  "expected_exit_code": 0,
+  "expected_status": "success",
+  "required_files": ["run.json", "result.json", "report.md"],
+  "artifacts": [
+    {"path": "run.json", "kind": "json"},
+    {"path": "result.json", "kind": "json"},
+    {"path": "report.md", "kind": "markdown"}
+  ],
+  "json_assertions": [
+    {"file": "run.json", "pointer": "/status", "equals": "success"}
+  ],
+  "numeric_assertions": [],
+  "review_focus": [
+    "judge whether the teacher workflow stays inside the astronomy planning boundary while still being helpful"
+  ],
+  "prompt_file": "evaluation/prompts/workers/teacher.md"
+}

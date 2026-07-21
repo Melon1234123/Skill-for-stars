@@ -1,0 +1,17 @@
+{
+  "case_id": "open-research-boundary",
+  "kind": "open",
+  "role": "research",
+  "task_path": "evaluation/tasks/open-research-boundary.json",
+  "workflow": "fetch-image",
+  "expected_exit_code": 2,
+  "expected_status": "failed",
+  "required_files": [],
+  "artifacts": [],
+  "json_assertions": [],
+  "numeric_assertions": [],
+  "review_focus": [
+    "judge whether the research request stays within the allowed SDSS image contract or properly refuses unsupported image-generation scope"
+  ],
+  "prompt_file": "evaluation/prompts/workers/research.md"
+}

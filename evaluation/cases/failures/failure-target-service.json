@@ -1,0 +1,21 @@
+{
+  "case_id": "failure-target-service",
+  "kind": "failure",
+  "role": "teacher",
+  "task_path": "examples/observation_m42_beijing.json",
+  "workflow": "run",
+  "expected_exit_code": 4,
+  "expected_status": "failed",
+  "required_files": ["run.json"],
+  "artifacts": [
+    {"path": "run.json", "kind": "json"}
+  ],
+  "json_assertions": [
+    {"file": "run.json", "pointer": "/status", "equals": "failed"}
+  ],
+  "numeric_assertions": [],
+  "review_focus": [
+    "inject a failing target-resolution backend so the replay runner can tell a simulated SIMBAD outage from a product regression"
+  ],
+  "prompt_file": "evaluation/prompts/workers/teacher.md"
+}

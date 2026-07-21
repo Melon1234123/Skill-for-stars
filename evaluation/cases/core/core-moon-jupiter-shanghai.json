@@ -1,0 +1,28 @@
+{
+  "case_id": "core-moon-jupiter-shanghai",
+  "kind": "core",
+  "role": "outreach",
+  "task_path": "examples/moon_jupiter_shanghai.json",
+  "workflow": "relationship",
+  "expected_exit_code": 0,
+  "expected_status": "success",
+  "required_files": ["relationship.csv", "relationship.json"],
+  "artifacts": [
+    {"path": "relationship.csv", "kind": "csv"},
+    {"path": "relationship.json", "kind": "json"}
+  ],
+  "json_assertions": [
+    {"file": "relationship.json", "pointer": "/task/task_type", "equals": "solar_system_relationship"},
+    {"file": "relationship.json", "pointer": "/settings/solar_system_ephemeris", "equals": "builtin"}
+  ],
+  "numeric_assertions": [],
+  "csv_assertions": [
+    {"file": "relationship.csv", "row": 0, "column": "moon_altitude_deg", "expected": 5.226, "absolute_tolerance": 0.002},
+    {"file": "relationship.csv", "row": 0, "column": "angular_separation_deg", "expected": 87.917, "absolute_tolerance": 0.002}
+  ],
+  "review_focus": [
+    "confirm the outreach narrative can rely on the Moon-Jupiter relationship output",
+    "check the metadata reflects the relationship workflow instead of the observation pipeline"
+  ],
+  "prompt_file": "evaluation/prompts/workers/outreach.md"
+}

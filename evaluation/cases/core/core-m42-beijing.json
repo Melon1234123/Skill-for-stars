@@ -1,0 +1,26 @@
+{
+  "case_id": "core-m42-beijing",
+  "kind": "core",
+  "role": "teacher",
+  "task_path": "examples/observation_m42_beijing.json",
+  "workflow": "run",
+  "expected_exit_code": 0,
+  "expected_status": "success",
+  "required_files": ["run.json", "result.json", "report.md", "review_checklist.md"],
+  "artifacts": [
+    {"path": "run.json", "kind": "json"},
+    {"path": "result.json", "kind": "json"},
+    {"path": "report.md", "kind": "markdown"},
+    {"path": "figures/visibility_curve.png", "kind": "image"}
+  ],
+  "json_assertions": [
+    {"file": "run.json", "pointer": "/status", "equals": "success"},
+    {"file": "result.json", "pointer": "/target/canonical_name", "equals": "M 42"}
+  ],
+  "numeric_assertions": [],
+  "review_focus": [
+    "verify the teacher-facing audit bundle is complete",
+    "check that the workflow writes both result.json and report.md"
+  ],
+  "prompt_file": "evaluation/prompts/workers/teacher.md"
+}

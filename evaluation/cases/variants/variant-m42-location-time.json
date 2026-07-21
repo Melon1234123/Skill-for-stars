@@ -1,0 +1,22 @@
+{
+  "case_id": "variant-m42-location-time",
+  "kind": "variant",
+  "role": "teacher",
+  "task_path": "evaluation/tasks/variant-m42-location-time.json",
+  "workflow": "run",
+  "expected_exit_code": 0,
+  "expected_status": "success",
+  "required_files": ["run.json", "result.json"],
+  "artifacts": [
+    {"path": "run.json", "kind": "json"},
+    {"path": "result.json", "kind": "json"}
+  ],
+  "json_assertions": [
+    {"file": "run.json", "pointer": "/status", "equals": "success"}
+  ],
+  "numeric_assertions": [],
+  "review_focus": [
+    "confirm the teacher workflow remains correct after changing observation location and time range"
+  ],
+  "prompt_file": "evaluation/prompts/workers/teacher.md"
+}

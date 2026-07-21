@@ -1,0 +1,17 @@
+{
+  "case_id": "failure-invalid-timezone",
+  "kind": "failure",
+  "role": "teacher",
+  "task_path": "evaluation/tasks/failure-invalid-timezone.json",
+  "workflow": "validate",
+  "expected_exit_code": 2,
+  "expected_status": "failed",
+  "required_files": [],
+  "artifacts": [],
+  "json_assertions": [],
+  "numeric_assertions": [],
+  "review_focus": [
+    "the fixture injects an invalid IANA timezone so the replay runner can separate user input errors from setup errors"
+  ],
+  "prompt_file": "evaluation/prompts/workers/teacher.md"
+}

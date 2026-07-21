@@ -1,0 +1,17 @@
+{
+  "case_id": "failure-sdss-service",
+  "kind": "failure",
+  "role": "research",
+  "task_path": "examples/m51_sdss_image.json",
+  "workflow": "fetch-image",
+  "expected_exit_code": 7,
+  "expected_status": "failed",
+  "required_files": [],
+  "artifacts": [],
+  "json_assertions": [],
+  "numeric_assertions": [],
+  "review_focus": [
+    "inject an SDSS backend service failure so the replay runner can classify network or provider outages separately from product logic errors"
+  ],
+  "prompt_file": "evaluation/prompts/workers/research.md"
+}
