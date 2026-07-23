@@ -196,25 +196,26 @@ def test_weather_provider_reports_invalid_numeric_values_as_unavailable(
 ) -> None:
     from starskill.weather import OpenMeteoWeatherProvider
 
-    result = OpenMeteoWeatherProvider(
-        backend=StaticJsonBackend(
-            {
-                "hourly": {
-                    "time": ["2026-01-10T20:00"],
-                    "cloud_cover": [101],
-                    "precipitation": [0.0],
-                    "wind_speed_10m": [7.2],
-                    "visibility": [-1],
-                }
+    backend = StaticJsonBackend(
+        {
+            "hourly": {
+                "time": ["2026-01-10T20:00"],
+                "cloud_cover": [101],
+                "precipitation": [0.0],
+                "wind_speed_10m": [7.2],
+                "visibility": [-1],
             }
-        ),
+        }
+    )
+    result = OpenMeteoWeatherProvider(
+        backend=backend,
         cache_dir=tmp_path,
         clock=fixed_clock,
     ).get_forecast(make_conditions_request())
 
     assert result.samples == []
     assert result.source.provider == "Open-Meteo"
-    assert result.source.source_url is not None
+    assert result.source.source_url == backend.calls[0]["url"]
     assert result.source.accessed_at == fixed_clock()
     assert result.source.from_cache is False
     assert result.source.availability == "unavailable"
