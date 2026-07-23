@@ -1,6 +1,7 @@
 import csv
 import json
 import os
+import re
 import subprocess
 import sys
 from io import BytesIO
@@ -527,11 +528,32 @@ def test_sky_chart_help_and_port_bounds(capsys) -> None:
     with pytest.raises(SystemExit) as help_exit:
         main(["sky-chart", "--help"])
     assert help_exit.value.code == 0
-    assert "--port" in capsys.readouterr().out
+    help_output = capsys.readouterr().out
+    assert set(re.findall(r"--[a-z-]+", help_output)) == {
+        "--help",
+        "--port",
+        "--open",
+        "--download-catalog",
+        "--catalog-cache-dir",
+    }
 
-    with pytest.raises(SystemExit) as port_exit:
-        main(["sky-chart", "--port", "1023"])
-    assert port_exit.value.code == 2
+    for port in ("1023", "65536"):
+        with pytest.raises(SystemExit) as port_exit:
+            main(["sky-chart", "--port", port])
+        assert port_exit.value.code == 2
+        capsys.readouterr()
+
+    for forbidden_args in (
+        ["--host", "0.0.0.0"],
+        ["--source-url", "https://example.test/catalog.csv.gz"],
+        ["--network"],
+        ["--browser-engine", "firefox"],
+        ["https://example.test/catalog.csv.gz"],
+    ):
+        with pytest.raises(SystemExit) as forbidden_exit:
+            main(["sky-chart", *forbidden_args])
+        assert forbidden_exit.value.code == 2
+        capsys.readouterr()
 
 
 def test_download_catalog_does_not_start_web_server(
@@ -590,6 +612,35 @@ def test_download_catalog_failure_is_stable_and_does_not_start_web_server(
     assert started == []
 
 
+def test_download_catalog_unusable_cache_directory_is_stable(
+    tmp_path, monkeypatch, capsys
+) -> None:
+    cache_parent = tmp_path / "not-a-directory"
+    cache_parent.write_text("blocked", encoding="utf-8")
+    started = []
+    monkeypatch.setattr(cli, "run_web_server", lambda **kwargs: started.append(kwargs))
+
+    assert (
+        main(
+            [
+                "sky-chart",
+                "--download-catalog",
+                "--catalog-cache-dir",
+                str(cache_parent / "child"),
+            ]
+        )
+        == 1
+    )
+
+    captured = capsys.readouterr()
+    assert json.loads(captured.err) == {
+        "downloaded": False,
+        "error": "catalog_download_failed",
+    }
+    assert str(cache_parent) not in captured.err
+    assert started == []
+
+
 def test_sky_chart_passes_only_loopback_port_and_open_flag(monkeypatch) -> None:
     observed = []
     monkeypatch.setattr(cli, "run_web_server", lambda **kwargs: observed.append(kwargs))
@@ -613,3 +664,33 @@ def test_sky_chart_server_start_failure_is_stable(monkeypatch, capsys) -> None:
         "error": "web_server_start_failed",
     }
     assert "private" not in captured.err
+
+
+def test_sky_chart_system_exit_failure_is_stable(monkeypatch, capsys) -> None:
+    def exit_with_bind_failure(**_kwargs: object) -> None:
+        print("uvicorn bind failure at /private/socket", file=sys.stderr)
+        raise SystemExit(1)
+
+    monkeypatch.setattr(cli, "run_web_server", exit_with_bind_failure)
+
+    assert main(["sky-chart"]) == 1
+
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert json.loads(captured.err) == {
+        "started": False,
+        "error": "web_server_start_failed",
+    }
+
+
+def test_sky_chart_successful_system_exit_is_not_normalized(monkeypatch) -> None:
+    monkeypatch.setattr(
+        cli,
+        "run_web_server",
+        lambda **_kwargs: (_ for _ in ()).throw(SystemExit(0)),
+    )
+
+    with pytest.raises(SystemExit) as exit_result:
+        main(["sky-chart"])
+
+    assert exit_result.value.code == 0

@@ -1,6 +1,8 @@
 """Command-line entry point for StarSkill."""
 
 import argparse
+import contextlib
+import io
 import json
 import sys
 from collections.abc import Sequence
@@ -107,9 +109,14 @@ def print_public_data_error(exc: PublicDataError) -> None:
 
 def download_full_catalog(cache_dir: Path) -> dict[str, object]:
     """Download and publish the one fixed HYG source without exposing its URL."""
-    summary = FullCatalogCache(cache_dir, load_hyg_source()).download_and_publish(
-        HttpCatalogFetcher()
-    )
+    try:
+        summary = FullCatalogCache(cache_dir, load_hyg_source()).download_and_publish(
+            HttpCatalogFetcher()
+        )
+    except CatalogDownloadError:
+        raise
+    except (OSError, ValueError) as error:
+        raise CatalogDownloadError("catalog cache setup failed") from error
     return {
         "downloaded": True,
         "version": summary.version,
@@ -203,17 +210,23 @@ def main(argv: Sequence[str] | None = None) -> int:
             print(json.dumps(summary, ensure_ascii=False))
             return 0
         try:
-            run_web_server(port=args.port, open_browser=args.open)
+            with contextlib.redirect_stderr(io.StringIO()):
+                run_web_server(port=args.port, open_browser=args.open)
+        except SystemExit as error:
+            if error.code != 1:
+                raise
         except (OSError, RuntimeError):
-            print(
-                json.dumps(
-                    {"started": False, "error": "web_server_start_failed"},
-                    ensure_ascii=False,
-                ),
-                file=sys.stderr,
-            )
-            return 1
-        return 0
+            pass
+        else:
+            return 0
+        print(
+            json.dumps(
+                {"started": False, "error": "web_server_start_failed"},
+                ensure_ascii=False,
+            ),
+            file=sys.stderr,
+        )
+        return 1
 
     if args.command == "resolve":
         try:
