@@ -218,10 +218,14 @@ def test_sky_chart_busy_and_invalid_ids_are_stable(
     monkeypatch.setattr(web_api_module.asyncio, "wait_for", timeout_wait)
     client = make_client(tmp_path, rendered_chart)
 
-    assert client.get("/v1/sky-chart/renders/not-valid!.png").json() == {
+    malformed = client.get("/v1/sky-chart/renders/not-valid!.png")
+    missing = client.get("/v1/sky-chart/renders/missing.json")
+    assert malformed.status_code == 404
+    assert malformed.json() == {
         "detail": "Render not found"
     }
-    assert client.get("/v1/sky-chart/renders/missing.json").json() == {
+    assert missing.status_code == 404
+    assert missing.json() == {
         "detail": "Render not found"
     }
     busy = client.post("/v1/sky-chart/render", json=valid_sky_chart_payload())
@@ -242,6 +246,23 @@ def test_render_limiter_allows_30th_and_rejects_31st_without_changing_legacy_bud
     assert statuses[:30] == [200] * 30
     assert statuses[30] == 429
     assert client.get("/healthz").status_code == 200
+
+
+def test_render_does_not_consume_the_legacy_request_budget(
+    tmp_path: Path, rendered_chart: RenderedSkyChart
+) -> None:
+    client = make_client(
+        tmp_path,
+        rendered_chart,
+        requests_per_minute=1,
+        sky_chart_requests_per_minute=30,
+    )
+
+    assert client.post(
+        "/v1/sky-chart/render", json=valid_sky_chart_payload()
+    ).status_code == 200
+    assert client.get("/healthz").status_code == 200
+    assert client.get("/healthz").status_code == 429
 
 
 def test_render_expiry_uses_injected_monotonic_clock(

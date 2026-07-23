@@ -162,17 +162,21 @@ def create_web_app(
 
     @app.middleware("http")
     async def guard_local_requests(request: Request, call_next: Any) -> Any:
-        allowed, retry_after = limiter.allow(_client_host(request))
-        if not allowed:
-            return JSONResponse(
-                status_code=429,
-                content={"detail": "Too many requests"},
-                headers={"Retry-After": str(retry_after)},
-            )
+        is_sky_chart_render = (
+            request.method == "POST" and request.url.path == _SKY_CHART_RENDER_PATH
+        )
+        if not is_sky_chart_render:
+            allowed, retry_after = limiter.allow(_client_host(request))
+            if not allowed:
+                return JSONResponse(
+                    status_code=429,
+                    content={"detail": "Too many requests"},
+                    headers={"Retry-After": str(retry_after)},
+                )
 
         body_limit = (
             MAX_SKY_CHART_REQUEST_BODY_BYTES
-            if request.method == "POST" and request.url.path == _SKY_CHART_RENDER_PATH
+            if is_sky_chart_render
             else MAX_REQUEST_BODY_BYTES
         )
         content_length = request.headers.get("content-length")
