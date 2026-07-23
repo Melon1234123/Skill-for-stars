@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 import starskill
+from starskill.recommendations import HUMAN_REVIEW_ITEMS
 from starskill.schemas import ObservationTask
 from starskill.target_resolver import TargetServiceError
 
@@ -93,7 +94,11 @@ def test_run_pipeline_generates_chinese_report_for_zh_cn_task(tmp_path) -> None:
     assert "## 规则判定" in report
     assert "## 需要人工复核" in report
     assert "Observation Report" not in report
-    assert "- [ ]" in checklist
+    assert [
+        line.removeprefix("- [ ] ")
+        for line in checklist.splitlines()
+        if line.startswith("- [ ]")
+    ] == list(HUMAN_REVIEW_ITEMS)
 
 
 def test_run_pipeline_reports_cache_hit_on_second_run(tmp_path) -> None:

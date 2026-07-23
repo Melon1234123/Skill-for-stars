@@ -17,6 +17,7 @@ from starskill.observation_planner import (
     write_observation_plan_json,
     write_visibility_csv,
 )
+from starskill.recommendations import HUMAN_REVIEW_ITEMS
 from starskill.schemas import (
     ArtifactRecord,
     ObservationPlanResult,
@@ -153,16 +154,9 @@ def _write_report(
 def _write_review_checklist(path: Path) -> None:
     path.write_text(
         "\n".join(
-            [
-                "# Human Review Checklist",
-                "",
-                "- [ ] Verify the target, date, timezone, longitude, and latitude.",
-                "- [ ] Check weather, cloud cover, transparency, and wind.",
-                "- [ ] Check buildings, trees, terrain, and local light pollution.",
-                "- [ ] Confirm telescope field of view, setup, and safety procedures.",
-                "- [ ] Compare at least one sky position with an independent tool.",
-                "",
-            ]
+            ["# Human Review Checklist", ""]
+            + [f"- [ ] {item}" for item in HUMAN_REVIEW_ITEMS]
+            + [""]
         ),
         encoding="utf-8",
     )
