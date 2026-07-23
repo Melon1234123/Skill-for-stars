@@ -39,7 +39,8 @@ def test_readme_documents_python_only_sky_chart() -> None:
         encoding="utf-8"
     )
 
-    assert 'pip install -e ".[dev]"' in text
+    assert 'pip install ".[dev]"' in text
+    assert 'pip install -e ".[dev]"' not in text
     assert "starskill sky-chart --open" in text
     assert ".venv/bin/starskill sky-chart --open" in document_text["Skill"]
     assert text.count("```") % 2 == 0

@@ -20,12 +20,18 @@ Read [references/cli-contract.md](references/cli-contract.md) before running a c
 ## Prepare
 
 1. Locate the repository root containing `pyproject.toml`, `examples/`, and `src/starskill`.
-2. Use the repository virtual environment when present. Otherwise tell the user to use Python 3.11+, create one, and install the declared dependencies before a Python command is required:
+2. Use the repository virtual environment when present. Otherwise require Python 3.11+, create one, and install the declared dependencies before a Python command is required. Run these public setup commands from the repository root:
 
    ```bash
+   python3 -c 'import sys; raise SystemExit("StarSkill requires Python 3.11 or newer" if sys.version_info < (3, 11) else 0)'
    python3 -m venv .venv
-   .venv/bin/python -m pip install -e ".[dev]"
+   .venv/bin/python -m pip install ".[dev]"
    ```
+
+   Do not use an editable install for the public quick-start. If `python3` is
+   older than 3.11, stop and ask the user to install or select a compatible
+   interpreter, then substitute that interpreter for `python3` in the commands
+   above.
 
 3. Reuse the matching example JSON when the requested case matches it. For new observation inputs, validate the JSON before any network query.
 4. Choose a new output directory unless the user explicitly asks to replace an existing run.

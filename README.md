@@ -50,20 +50,22 @@ cd Skill-for-stars
 
 python -m venv .venv
 .venv\Scripts\Activate.ps1
-python -m pip install -e ".[dev]"
+python -m pip install ".[dev]"
 ```
 
 macOS 或 Linux 使用：
 
 ```bash
+python3 -c 'import sys; raise SystemExit("StarSkill requires Python 3.11 or newer" if sys.version_info < (3, 11) else 0)'
+python3 -m venv .venv
 source .venv/bin/activate
-python -m pip install -e ".[dev]"
+python -m pip install ".[dev]"
 ```
 
 如需使用 Skyfield/DE421 独立交叉验证脚本，再安装验证依赖：
 
 ```bash
-python -m pip install -e ".[validation]"
+python -m pip install ".[validation]"
 ```
 
 ## 快速开始
@@ -245,11 +247,15 @@ starskill_clone_dir=$(mktemp -d)
 git clone https://github.com/Melon1234123/Skill-for-stars.git "$starskill_clone_dir"
 cd "$starskill_clone_dir"
 
-python3 --version
+python3 -c 'import sys; raise SystemExit("StarSkill requires Python 3.11 or newer" if sys.version_info < (3, 11) else 0)'
 python3 -m venv .venv
-.venv/bin/python -m pip install -e ".[dev]"
+.venv/bin/python -m pip install ".[dev]"
 .venv/bin/starskill sky-chart --open
 ```
+
+如果 `python3` 不是 Python 3.11 或更高版本，请先安装并选择兼容的 Python
+解释器（例如 `python3.12`），再用该解释器执行上面的前三条命令。安装使用标准
+wheel，而非 editable 安装，确保命令行入口在新的虚拟环境中可以直接导入包。
 
 默认服务只监听回环地址 `127.0.0.1` 的端口 `8000`。`--open` 会在健康检查通过后
 打开本机浏览器；不使用该选项时，手动访问 `http://127.0.0.1:8000/`。可用
