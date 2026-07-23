@@ -99,10 +99,6 @@ def chart_with_png_bytes(template: RenderedSkyChart, png_bytes: bytes) -> Render
         metadata=metadata,
         catalog_mode_used=template.catalog_mode_used,
         catalog_status=template.catalog_status,
-        metadata_json_bytes=metadata.model_dump_json(
-            exclude_none=False,
-            by_alias=True,
-        ).encode("utf-8"),
     )
 
 
@@ -435,23 +431,28 @@ def test_render_store_rejects_png_metadata_digest_mismatch(fixed_chart) -> None:
         metadata=fixed_chart.metadata,
         catalog_mode_used=fixed_chart.catalog_mode_used,
         catalog_status=fixed_chart.catalog_status,
-        metadata_json_bytes=fixed_chart.metadata_json_bytes,
     )
 
     with pytest.raises(ValueError, match="metadata does not match"):
         RenderStore().put(mismatched)
 
 
+def test_render_store_rejects_matching_digest_non_png_bytes(fixed_chart) -> None:
+    invalid_png = chart_with_png_bytes(fixed_chart, b"not a png")
+
+    with pytest.raises(ValueError, match="valid 1200x900 RGB PNG"):
+        RenderStore().put(invalid_png)
+
+
 def test_render_store_expires_and_malformed_ids_match_missing(fixed_chart) -> None:
     now = [0.0]
-    chart = chart_with_png_bytes(fixed_chart, b"a")
     store = RenderStore(
         ttl_seconds=900,
         max_records=2,
-        max_bytes=stored_byte_size(chart),
+        max_bytes=stored_byte_size(fixed_chart),
         monotonic_clock=lambda: now[0],
     )
-    first = store.put(chart)
+    first = store.put(fixed_chart)
     assert re.fullmatch(r"[A-Za-z0-9_-]{32}", first)
     assert store.get("not/valid") is None
     assert store.get("missing_but_valid") is None
@@ -466,20 +467,18 @@ def test_render_store_retries_malformed_generated_id(fixed_chart, monkeypatch) -
         "token_urlsafe",
         lambda _bytes: next(generated),
     )
-    chart = chart_with_png_bytes(fixed_chart, b"a")
-    store = RenderStore(max_bytes=stored_byte_size(chart))
-    assert store.put(chart) == "A" * 32
+    store = RenderStore(max_bytes=stored_byte_size(fixed_chart))
+    assert store.put(fixed_chart) == "A" * 32
 
 
 def test_render_store_purges_before_malformed_get(fixed_chart) -> None:
     now = [0.0]
-    chart = chart_with_png_bytes(fixed_chart, b"a")
     store = RenderStore(
         ttl_seconds=1,
-        max_bytes=stored_byte_size(chart),
+        max_bytes=stored_byte_size(fixed_chart),
         monotonic_clock=lambda: now[0],
     )
-    render_id = store.put(chart)
+    render_id = store.put(fixed_chart)
     now[0] = 2.0
     assert store.get("bad/id") is None
     now[0] = 0.0
@@ -487,13 +486,10 @@ def test_render_store_purges_before_malformed_get(fixed_chart) -> None:
 
 
 def test_render_store_evicts_at_default_record_capacity(fixed_chart) -> None:
-    charts = [
-        chart_with_png_bytes(fixed_chart, str(index).encode())
-        for index in range(21)
-    ]
-    store = RenderStore(max_bytes=sum(stored_byte_size(chart) for chart in charts))
+    record_size = stored_byte_size(fixed_chart)
+    store = RenderStore(max_bytes=21 * record_size)
     assert store.max_records == 20
-    ids = [store.put(chart) for chart in charts]
+    ids = [store.put(fixed_chart) for _index in range(21)]
     assert store.get(ids[0]) is None
     assert all(store.get(render_id) is not None for render_id in ids[1:])
 
@@ -502,13 +498,10 @@ def test_render_store_evicts_at_byte_capacity_and_uses_50_mib_default(
     fixed_chart,
 ) -> None:
     assert RenderStore().max_bytes == 50 * 1024 * 1024
-    first_chart = chart_with_png_bytes(fixed_chart, b"aaa")
-    second_chart = chart_with_png_bytes(fixed_chart, b"bbb")
-    one_record_size = stored_byte_size(first_chart)
-    assert stored_byte_size(second_chart) == one_record_size
+    one_record_size = stored_byte_size(fixed_chart)
     store = RenderStore(max_records=20, max_bytes=2 * one_record_size - 1)
-    first = store.put(first_chart)
-    second = store.put(second_chart)
+    first = store.put(fixed_chart)
+    second = store.put(fixed_chart)
     assert store.get(first) is None
     assert store.get(second) is not None
 
@@ -517,20 +510,17 @@ def test_render_store_evicts_earliest_expiry_then_insertion_order_and_clears(
     fixed_chart,
 ) -> None:
     now = [0.0]
-    charts = [
-        chart_with_png_bytes(fixed_chart, payload)
-        for payload in (b"a", b"b", b"c")
-    ]
+    record_size = stored_byte_size(fixed_chart)
     store = RenderStore(
         ttl_seconds=10,
         max_records=2,
-        max_bytes=sum(stored_byte_size(chart) for chart in charts[:2]),
+        max_bytes=2 * record_size,
         monotonic_clock=lambda: now[0],
     )
-    first = store.put(charts[0])
-    second = store.put(charts[1])
+    first = store.put(fixed_chart)
+    second = store.put(fixed_chart)
     now[0] = 1.0
-    third = store.put(charts[2])
+    third = store.put(fixed_chart)
     assert store.get(first) is None
     assert store.get(second) is not None
     assert store.get(third) is not None

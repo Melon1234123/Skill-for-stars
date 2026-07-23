@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from hashlib import sha256
 from importlib import metadata as importlib_metadata
@@ -149,7 +149,32 @@ class RenderedSkyChart:
     metadata: SkyChartExportMetadata
     catalog_mode_used: str
     catalog_status: str
-    metadata_json_bytes: bytes
+    _stored_metadata_json_bytes: bytes | None = field(
+        default=None,
+        init=False,
+        repr=False,
+        compare=False,
+    )
+
+    @property
+    def metadata_json_bytes(self) -> bytes:
+        if self._stored_metadata_json_bytes is not None:
+            return self._stored_metadata_json_bytes
+        return _serialize_metadata(self.metadata)
+
+    @classmethod
+    def _from_store(
+        cls,
+        *,
+        png_bytes: bytes,
+        metadata: SkyChartExportMetadata,
+        catalog_mode_used: str,
+        catalog_status: str,
+        metadata_json_bytes: bytes,
+    ) -> RenderedSkyChart:
+        chart = cls(png_bytes, metadata, catalog_mode_used, catalog_status)
+        object.__setattr__(chart, "_stored_metadata_json_bytes", metadata_json_bytes)
+        return chart
 
 
 @dataclass(frozen=True)
@@ -305,7 +330,6 @@ class SkyChartRenderer:
             metadata=metadata,
             catalog_mode_used=selection.mode_used,
             catalog_status=selection.status,
-            metadata_json_bytes=_serialize_metadata(metadata),
         )
 
     @staticmethod
@@ -620,7 +644,6 @@ class SkyChartService:
             metadata=metadata,
             catalog_mode_used=chart.catalog_mode_used,
             catalog_status=chart.catalog_status,
-            metadata_json_bytes=_serialize_metadata(metadata),
         )
 
 
@@ -652,6 +675,7 @@ class RenderStore:
             self._purge_expired(now)
             if chart.metadata.render.png_sha256 != sha256(chart.png_bytes).hexdigest():
                 raise ValueError("render metadata does not match PNG bytes")
+            _validate_rgb_png(chart.png_bytes)
             render_id = self._new_render_id()
             metadata = chart.metadata.model_copy(update={"render_id": render_id})
             metadata_json = _serialize_metadata(metadata)
@@ -670,7 +694,7 @@ class RenderStore:
             metadata = SkyChartExportMetadata.model_validate_json(
                 record.metadata_json_bytes
             )
-            return RenderedSkyChart(
+            return RenderedSkyChart._from_store(
                 png_bytes=record.png_bytes,
                 metadata=metadata,
                 catalog_mode_used=metadata.request.catalog_mode_used,
@@ -776,3 +800,73 @@ def _encode_rgb_png(rgb_bytes: bytes, *, width: int, height: int) -> bytes:
             _png_chunk(b"IEND", b""),
         )
     )
+
+
+def _validate_rgb_png(png_bytes: bytes) -> None:
+    error = ValueError("render must be a valid 1200x900 RGB PNG")
+    signature = b"\x89PNG\r\n\x1a\n"
+    if not isinstance(png_bytes, bytes) or not png_bytes.startswith(signature):
+        raise error
+
+    offset = len(signature)
+    chunks: list[tuple[bytes, bytes]] = []
+    while offset < len(png_bytes):
+        if len(png_bytes) - offset < 12:
+            raise error
+        length = struct.unpack(">I", png_bytes[offset : offset + 4])[0]
+        chunk_end = offset + 12 + length
+        if chunk_end > len(png_bytes):
+            raise error
+        chunk_type = png_bytes[offset + 4 : offset + 8]
+        data = png_bytes[offset + 8 : offset + 8 + length]
+        stored_crc = struct.unpack(">I", png_bytes[offset + 8 + length : chunk_end])[0]
+        calculated_crc = zlib.crc32(data, zlib.crc32(chunk_type)) & 0xFFFFFFFF
+        if stored_crc != calculated_crc:
+            raise error
+        chunks.append((chunk_type, data))
+        offset = chunk_end
+        if chunk_type == b"IEND":
+            break
+
+    if offset != len(png_bytes) or [kind for kind, _data in chunks] != [
+        b"IHDR",
+        b"IDAT",
+        b"IEND",
+    ]:
+        raise error
+
+    ihdr = chunks[0][1]
+    if len(ihdr) != 13 or chunks[2][1]:
+        raise error
+    width, height, bit_depth, color_type, compression, filter_method, interlace = (
+        struct.unpack(">IIBBBBB", ihdr)
+    )
+    if (
+        width,
+        height,
+        bit_depth,
+        color_type,
+        compression,
+        filter_method,
+        interlace,
+    ) != (CANVAS_WIDTH_PX, CANVAS_HEIGHT_PX, 8, 2, 0, 0, 0):
+        raise error
+
+    row_size = width * 3
+    expected_size = (row_size + 1) * height
+    decompressor = zlib.decompressobj()
+    try:
+        scanlines = decompressor.decompress(chunks[1][1], expected_size + 1)
+        if len(scanlines) > expected_size or decompressor.unconsumed_tail:
+            raise error
+        scanlines += decompressor.flush(expected_size - len(scanlines) + 1)
+    except zlib.error as exc:
+        raise error from exc
+    if (
+        len(scanlines) != expected_size
+        or not decompressor.eof
+        or decompressor.unused_data
+        or decompressor.unconsumed_tail
+        or any(scanlines[row * (row_size + 1)] != 0 for row in range(height))
+    ):
+        raise error
