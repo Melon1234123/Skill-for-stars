@@ -38,6 +38,9 @@ validation = [
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+starskill = ["data/*.json", "static/*.html"]
+
 [tool.pytest.ini_options]
 addopts = "-q"
 pythonpath = ["src"]
