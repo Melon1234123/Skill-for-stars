@@ -315,3 +315,65 @@ Expected: PASS. Public-network smoke results remain outside this command.
 - [ ] **Step 5: Commit**
 
 Run `git add web/playwright.config.ts web/tests README.md docs/mcp-server.md`, then create commit `test: verify browser outreach workflow`.
+
+### Task 6: Package clean-clone bootstrap into the published run-starskill Skill
+
+**Files:**
+- Modify: `skills/run-starskill/SKILL.md:1-70`
+- Modify: `skills/run-starskill/agents/openai.yaml`
+- Create: `skills/run-starskill/references/local-web.md`
+- Modify: `README.md:1-420`
+- Create: `tests/test_skill_package.py`
+
+**Interfaces:**
+- Consumes the final `starskill-web`, Web build, and README commands from all previous tasks.
+- Produces an agent-invocable local-web bootstrap workflow that performs the documented commands after a clean clone.
+
+- [ ] **Step 1: Write failing Skill package tests**
+
+```python
+def test_run_starskill_skill_routes_browser_requests_to_the_local_web_reference() -> None:
+    skill = (PROJECT_ROOT / "skills/run-starskill/SKILL.md").read_text(encoding="utf-8")
+    reference = (PROJECT_ROOT / "skills/run-starskill/references/local-web.md").read_text(encoding="utf-8")
+    assert "Local Browser App" in skill
+    assert "references/local-web.md" in skill
+    assert "python -m venv .venv" in reference
+    assert "npm --prefix web install" in reference
+    assert "make -C web engine" in reference
+    assert "starskill-web" in reference
+    assert "127.0.0.1" in reference
+
+
+def test_skill_metadata_mentions_local_browser_setup() -> None:
+    metadata = (PROJECT_ROOT / "skills/run-starskill/agents/openai.yaml").read_text(encoding="utf-8")
+    assert "browser" in metadata.lower()
+    assert "$run-starskill" in metadata
+```
+
+- [ ] **Step 2: Run the test before editing the Skill**
+
+Run: `pytest tests/test_skill_package.py -q`
+
+Expected: FAIL because the local-browser section and reference do not exist.
+
+- [ ] **Step 3: Add concise routing to SKILL.md and exact bootstrap commands to the reference**
+
+Extend the `run-starskill` YAML description and `agents/openai.yaml` so browser setup, local Web app, and clean-clone startup trigger the Skill. Add a `Local Browser App` section to `SKILL.md`: only when the user asks for the browser app, local Web service, or clean-clone setup, read `references/local-web.md`, execute the stated checks and commands, and verify `/healthz` before reporting success. Keep the existing CLI workflow path unchanged.
+
+Create `references/local-web.md` with imperative commands and this behavior: locate repository root; verify Python 3.11+, Node/npm, Docker CLI, and a running Docker daemon; install missing runtime prerequisites using the host's supported package manager when tool policy allows; otherwise state the exact missing prerequisite and do not claim startup. Create `.venv` if absent, run `.venv/bin/python -m pip install -e ".[dev]"`, run `npm --prefix web install`, `make -C web engine`, `npm --prefix web run build`, start `starskill-web` in the background, poll `http://127.0.0.1:<README-port>/healthz`, then report URL and process identifier. Reuse valid existing `.venv`, Node modules, and Web assets. Do not require API keys, a Black Marble snapshot, cache content, or installed desktop Stellarium for core startup; name those modules unavailable when unconfigured. Never bind beyond loopback, run the server with arbitrary user-provided host arguments, or silently continue after a failed install/build/health check.
+
+Use the exact same command block in README, including supported macOS/Linux and Windows path variants. Explain that Docker Desktop must be installed and running before the engine build; if its GUI login/launch is required, the Skill reports that concrete blocker rather than fabricating completion.
+
+- [ ] **Step 4: Validate documentation and the Skill package**
+
+Run: `pytest tests/test_skill_package.py tests/test_evaluation_cases.py -q && python /Users/melonlaptop/.codex/skills/.system/skill-creator/scripts/quick_validate.py skills/run-starskill`
+
+Expected: PASS. Existing evaluation Skill assertions remain intact.
+
+- [ ] **Step 5: Run the actual clean-clone bootstrap through the Skill instructions**
+
+Follow `references/local-web.md` in a fresh `mktemp -d` clone, using only its declared prerequisite installs and commands. Verify `.venv`, built Web assets, `starskill-web`, `/healthz`, and the root browser page. Record the observed commands, exit codes, URL, and remaining optional-provider states in the implementation report. Do not reuse the source checkout's cache, `runs/`, `.env`, light snapshot, or Stellarium configuration.
+
+- [ ] **Step 6: Commit**
+
+Run `git add skills/run-starskill/SKILL.md skills/run-starskill/agents/openai.yaml skills/run-starskill/references/local-web.md README.md tests/test_skill_package.py`, then create commit `feat: bootstrap local web app from Skill`.
