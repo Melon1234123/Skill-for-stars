@@ -1,0 +1,12 @@
+{
+  "dataset_id": "VNP46A4",
+  "dataset_version": "001",
+  "sample_period": "2025-01",
+  "spatial_resolution": "500 m",
+  "unit": "nW cm^-2 sr^-1",
+  "source_url": "https://blackmarble.gsfc.nasa.gov/",
+  "cells": [
+    {"longitude": 116.4, "latitude": 39.9, "radiance": 18.5},
+    {"longitude": 121.5, "latitude": 31.2, "radiance": 42.0}
+  ]
+}
