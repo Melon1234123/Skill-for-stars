@@ -12,6 +12,7 @@ dependencies = [
     "astropy==7.2.0",
     "astroquery==0.4.11",
     "matplotlib==3.10.9",
+    "mcp==1.28.1",
     "numpy==2.4.2",
     "pydantic>=2.10,<3",
     "tzdata>=2025.2",
@@ -19,6 +20,7 @@ dependencies = [
 
 [project.scripts]
 starskill = "starskill.cli:main"
+starskill-mcp = "starskill.mcp_server:main"
 
 [project.optional-dependencies]
 dev = [
