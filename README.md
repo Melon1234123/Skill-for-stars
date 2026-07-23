@@ -375,6 +375,8 @@ python -m starskill fetch-image examples/m51_sdss_image.json \
 
 ## 后续工程化方向
 
+- `starskill-web` 仅监听本机回环地址 `127.0.0.1`，不启用 CORS；浏览器仅调用同源 API，绝不接触 NASA 凭据、服务端缓存路径或桌面程序 URL。
+- Web API 对请求体和单客户端请求频率设限，服务端运行元数据与资源路径不会返回给浏览器。
 - 将命令行入口进一步封装为 MCP server，使智能体可通过标准工具协议调用。
 - 将输入模型导出为独立 JSON Schema，便于其他工具在调用前校验。
 - 增加更多公开数据源，并为短暂网络故障提供受控重试策略。
