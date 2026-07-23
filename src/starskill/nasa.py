@@ -4,6 +4,7 @@ from collections.abc import Callable
 from datetime import date as calendar_date
 from datetime import datetime, timedelta, timezone
 from hashlib import sha256
+import os
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlencode
@@ -41,6 +42,14 @@ class NasaApodProvider:
         self._cache_dir = cache_dir
         self._backend = backend or UrlJsonBackend()
         self._clock = clock or (lambda: datetime.now(timezone.utc))
+
+    @classmethod
+    def from_environment(cls) -> "NasaApodProvider":
+        """Build the optional provider without exposing its credential."""
+        return cls(
+            api_key=os.environ.get("STARSKILL_NASA_API_KEY"),
+            cache_dir=Path(os.environ.get("STARSKILL_NASA_CACHE_DIR", "cache/nasa")),
+        )
 
     def get_feature(self, date: str | None) -> NasaFeature:
         now = self._clock()

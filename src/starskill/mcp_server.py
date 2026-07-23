@@ -51,7 +51,7 @@ from starskill.target_resolver import (
     TargetResolutionError,
     resolve_target,
 )
-from starskill.stellarium_bridge import StellariumBridge
+from starskill.stellarium_bridge import DEFAULT_BASE_URL, StellariumBridge
 from starskill.weather import OPEN_METEO_ENDPOINT, OpenMeteoWeatherProvider
 
 
@@ -450,6 +450,9 @@ class StarSkillMcpService:
 
 
 def service_from_environment() -> StarSkillMcpService:
+    stellarium_base_url = os.environ.get(
+        "STARSKILL_STELLARIUM_BASE_URL", DEFAULT_BASE_URL
+    ) or DEFAULT_BASE_URL
     return StarSkillMcpService(
         runs_root=Path(os.environ.get("STARSKILL_RUNS_DIR", "runs/mcp")),
         target_cache_dir=Path(
@@ -469,6 +472,9 @@ def service_from_environment() -> StarSkillMcpService:
         ),
         nasa_cache_dir=Path(os.environ.get("STARSKILL_NASA_CACHE_DIR", "cache/nasa")),
         nasa_api_key=os.environ.get("STARSKILL_NASA_API_KEY"),
+        stellarium_bridge_factory=lambda: StellariumBridge(
+            base_url=stellarium_base_url
+        ),
     )
 
 

@@ -31,6 +31,20 @@ def fixed_clock() -> datetime:
     return datetime(2026, 1, 10, 12, tzinfo=timezone.utc)
 
 
+def test_apod_provider_reads_its_key_and_cache_directory_from_environment(
+    monkeypatch, tmp_path: Path
+) -> None:
+    from starskill.nasa import NasaApodProvider
+
+    monkeypatch.setenv("STARSKILL_NASA_API_KEY", "test-key")
+    monkeypatch.setenv("STARSKILL_NASA_CACHE_DIR", str(tmp_path / "nasa-cache"))
+
+    provider = NasaApodProvider.from_environment()
+
+    assert provider._api_key == "test-key"
+    assert provider._cache_dir == tmp_path / "nasa-cache"
+
+
 def test_apod_never_calls_network_without_a_key(tmp_path: Path) -> None:
     from starskill.nasa import NasaApodProvider
 

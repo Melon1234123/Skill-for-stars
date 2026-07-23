@@ -329,3 +329,13 @@ def test_stdio_server_advertises_supported_tools_and_run_resources(tmp_path) -> 
         ]
 
     anyio.run(check_server)
+
+
+def test_mcp_server_reads_the_optional_local_stellarium_url(monkeypatch) -> None:
+    from starskill.mcp_server import service_from_environment
+
+    monkeypatch.setenv("STARSKILL_STELLARIUM_BASE_URL", "http://localhost:8090")
+
+    bridge = service_from_environment().stellarium_bridge_factory()
+
+    assert bridge._base_url == "http://localhost:8090"

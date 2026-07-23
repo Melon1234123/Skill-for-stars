@@ -373,6 +373,84 @@ python -m starskill fetch-image examples/m51_sdss_image.json \
 
 评审重点不是技能数量，而是每个任务是否从输入到输出形成稳定闭环。本项目的三类任务分别覆盖观测计划、科普表达和公开数据展示，均保留关键中间结果，便于复现和判断可靠性。
 
+## 本机浏览器服务配置契约
+
+本节是公开的未来浏览器服务配置契约。当前仓库尚未包含 `web/` 工程、
+Stellarium Web Engine 或浏览器客户端，因此**不得在当前提交执行**下面的 Web
+构建、启动或验收命令，也不得声称已构建或运行。Browser Task 5 完成后在全新克隆
+中执行此验收流程；Browser Task 6 可以替换或扩展客户端，但必须重新验证本节的
+启动与降级行为。
+
+### 前置条件
+
+安装并可在命令行使用以下运行时：Python 3.11 或更高版本、Node.js 与 npm，以及
+Docker CLI。Docker daemon 也必须正在运行，供 `make -C web engine` 构建
+Stellarium Web Engine；仅安装 Docker 而 daemon 未启动不满足前置条件。公开克隆
+地址为 `https://github.com/Melon1234123/Skill-for-stars.git`。
+
+### Browser Task 5 后的全新克隆验收
+
+下列命令是 Browser Task 5 完成后才执行的 macOS/Linux 全新克隆流程。它不复制
+缓存、`runs/`、`.env`、Black Marble 快照或 Stellarium 配置到克隆目录：
+
+```bash
+starskill_clone_dir=$(mktemp -d)
+git clone https://github.com/Melon1234123/Skill-for-stars.git "$starskill_clone_dir"
+cd "$starskill_clone_dir"
+
+python3 --version
+node --version
+npm --version
+docker version
+docker info >/dev/null
+
+python3 -m venv .venv
+.venv/bin/python -m pip install -e ".[dev]"
+npm --prefix web install
+make -C web engine
+npm --prefix web run build
+starskill-web
+```
+
+`starskill-web` serves only the loopback origin. After it starts, verify the
+documented Uvicorn-default port and the browser entry page in a second shell:
+
+```bash
+curl -fsS http://127.0.0.1:8000/healthz
+open http://127.0.0.1:8000/
+```
+
+The health response must be `{"status":"ok"}` and `/` must serve the browser
+entry page. On platforms without `open`, use a browser to visit the same URL.
+Stop and report the missing prerequisite or failed command rather than treating
+an incomplete engine build or unavailable browser assets as a successful start.
+
+### Optional outreach enhancements
+
+No API key, Black Marble snapshot, cache, or desktop Stellarium installation is
+required for the core local star map, geometry, or weather workflows. The
+following environment variables enhance only their named panels or bridge:
+
+| Variable | Optional effect when configured | Behavior when absent |
+| --- | --- | --- |
+| `STARSKILL_NASA_API_KEY` | Allows the NASA APOD provider to request its optional feature. Keep the key in the local process environment only. | The NASA panel is explicitly `unavailable`; the provider makes no request without a key. |
+| `STARSKILL_LIGHT_POLLUTION_SNAPSHOT` | Points to a local, versioned NASA Black Marble snapshot. | The light-pollution panel is explicitly `unavailable`; it does not claim a live measurement. |
+| `STARSKILL_STELLARIUM_BASE_URL` | Configures the optional local desktop Stellarium RemoteControl bridge. | Desktop synchronization is unavailable; it is not needed by the browser star map. |
+
+The following APOD check is deliberately opt-in and is not part of the offline
+test suite or the fresh-clone acceptance procedure. Run it only after setting a
+nonempty private key. It never prints the key; `fresh`, `cached`, and
+`unavailable` are all valid outcomes, with `unavailable` denoting service
+degradation rather than a CI failure:
+
+```bash
+if [ -n "${STARSKILL_NASA_API_KEY:-}" ]; then
+  .venv/bin/python -c 'from starskill.nasa import NasaApodProvider; print(NasaApodProvider.from_environment().get_feature(None).source.availability)'
+else
+  printf '%s\n' 'STARSKILL_NASA_API_KEY is not set; skipping APOD smoke test.'
+fi
+```
+
 ## 后续工程化方向
 
 - `starskill-web` 仅监听本机回环地址 `127.0.0.1`，不启用 CORS；浏览器仅调用同源 API，绝不接触 NASA 凭据、服务端缓存路径或桌面程序 URL。

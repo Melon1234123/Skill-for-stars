@@ -1,5 +1,6 @@
 import csv
 import json
+import os
 import subprocess
 import sys
 from io import BytesIO
@@ -15,6 +16,17 @@ from tests.fixtures.m42 import write_m42_ephemeris, write_m42_target
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
+
+
+def source_checkout_environment() -> dict[str, str]:
+    """Make the source package importable to the real child CLI process."""
+    environment = os.environ.copy()
+    source_path = str(PROJECT_ROOT / "src")
+    existing_pythonpath = environment.get("PYTHONPATH")
+    environment["PYTHONPATH"] = os.pathsep.join(
+        path for path in (source_path, existing_pythonpath) if path
+    )
+    return environment
 
 
 class CliSimbadBackend:
@@ -129,6 +141,7 @@ def test_python_module_entrypoint_validates_documented_example() -> None:
             "examples/observation_m42_beijing.json",
         ],
         cwd=PROJECT_ROOT,
+        env=source_checkout_environment(),
         text=True,
         capture_output=True,
         check=False,
@@ -142,6 +155,7 @@ def test_module_help_lists_resolve_command() -> None:
     result = subprocess.run(
         [sys.executable, "-m", "starskill", "--help"],
         cwd=PROJECT_ROOT,
+        env=source_checkout_environment(),
         text=True,
         capture_output=True,
         check=False,
@@ -155,6 +169,7 @@ def test_module_help_lists_ephemeris_command() -> None:
     result = subprocess.run(
         [sys.executable, "-m", "starskill", "--help"],
         cwd=PROJECT_ROOT,
+        env=source_checkout_environment(),
         text=True,
         capture_output=True,
         check=False,
@@ -198,6 +213,7 @@ def test_module_help_lists_plan_command() -> None:
     result = subprocess.run(
         [sys.executable, "-m", "starskill", "--help"],
         cwd=PROJECT_ROOT,
+        env=source_checkout_environment(),
         text=True,
         capture_output=True,
         check=False,

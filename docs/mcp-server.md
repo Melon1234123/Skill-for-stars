@@ -15,6 +15,17 @@ python -m pip install -e ".[dev]"
 The `mcp==1.28.1` dependency and the `starskill-mcp` console entry point are
 installed with the project.
 
+For a clean checkout, clone
+`https://github.com/Melon1234123/Skill-for-stars.git`, create a Python 3.11+
+virtual environment, and install the project before configuring the client:
+
+```bash
+git clone https://github.com/Melon1234123/Skill-for-stars.git starskill
+cd starskill
+python3 -m venv .venv
+.venv/bin/python -m pip install -e ".[dev]"
+```
+
 ## Codex Configuration
 
 Add this server to the MCP client configuration. Substitute the absolute paths
@@ -31,17 +42,43 @@ STARSKILL_RUNS_DIR = "/absolute/path/to/starskill/runs/mcp"
 STARSKILL_TARGET_CACHE_DIR = "/absolute/path/to/starskill/cache/targets"
 STARSKILL_IMAGE_CACHE_DIR = "/absolute/path/to/starskill/cache/sdss"
 STARSKILL_WEATHER_CACHE_DIR = "/absolute/path/to/starskill/cache/weather"
-STARSKILL_LIGHT_POLLUTION_SNAPSHOT = "/absolute/path/to/starskill/data/black_marble_snapshot.json"
 STARSKILL_NASA_CACHE_DIR = "/absolute/path/to/starskill/cache/nasa"
 ```
 
 The server uses only standard input/output for MCP messages. Do not run it as
 an HTTP service without adding authentication and request limits.
 
+All paths above have repository-relative defaults, so these entries are useful
+for choosing an alternate writable location but are not required for a local
+checkout. Do not add a credentials file or a secret to this configuration.
+
+## Optional Outreach Configuration
+
+The core geometry and weather workflows do not require a NASA key, a Black
+Marble snapshot, or desktop Stellarium. Add only the enhancement that is
+available on the local machine:
+
+```toml
+[mcp_servers.starskill.env]
+STARSKILL_LIGHT_POLLUTION_SNAPSHOT = "/absolute/path/to/black_marble_snapshot.json"
+STARSKILL_STELLARIUM_BASE_URL = "http://127.0.0.1:8090"
+```
+
+`STARSKILL_LIGHT_POLLUTION_SNAPSHOT` selects a versioned local Black Marble
+snapshot. If it is missing or invalid, the light-pollution result is explicitly
+unavailable and never substitutes a live measurement. `STARSKILL_STELLARIUM_BASE_URL`
+is for an optional local desktop RemoteControl bridge; absent desktop
+configuration must not block the rest of the server.
+
 To enable NASA APOD, configure `STARSKILL_NASA_API_KEY` only in the local
 server process environment. It is used solely to configure the NASA provider;
 it is not returned by tools, written to run resources, or included in examples.
 Without it, `get_nasa_feature` returns an unavailable result with provenance.
+
+Tests use injected backends and fixtures and make no live provider or MCP calls.
+An APOD smoke check is opt-in only after a nonempty local key has been set; do
+not use a blank-key command or log the key. `unavailable` is a valid APOD
+degradation result, not a CI failure.
 
 ## Tools
 
