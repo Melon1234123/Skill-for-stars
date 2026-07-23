@@ -87,6 +87,8 @@ class CatalogSelection:
     mode_used: Literal["bundled", "full"]
     status: Literal["available", "degraded"]
     catalog: BundledCatalog | FullCatalog
+    constellation_segments: tuple[ConstellationSegment, ...] = ()
+    constellation_stars: tuple[CatalogStar, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -286,13 +288,31 @@ def select_catalog(
 ) -> CatalogSelection:
     """Choose a local catalog without attempting any network access."""
     if mode == "bundled":
-        return CatalogSelection(mode_used="bundled", status="available", catalog=bundled)
+        return CatalogSelection(
+            mode_used="bundled",
+            status="available",
+            catalog=bundled,
+            constellation_segments=bundled.segments,
+            constellation_stars=bundled.stars,
+        )
 
     full = full_cache.load_valid()
     if full is not None:
-        return CatalogSelection(mode_used="full", status="available", catalog=full)
+        return CatalogSelection(
+            mode_used="full",
+            status="available",
+            catalog=full,
+            constellation_segments=bundled.segments,
+            constellation_stars=bundled.stars,
+        )
     if mode == "auto":
-        return CatalogSelection(mode_used="bundled", status="degraded", catalog=bundled)
+        return CatalogSelection(
+            mode_used="bundled",
+            status="degraded",
+            catalog=bundled,
+            constellation_segments=bundled.segments,
+            constellation_stars=bundled.stars,
+        )
     if mode == "full":
         raise FullCatalogUnavailableError(
             "full catalog is unavailable; run starskill sky-chart --download-catalog"

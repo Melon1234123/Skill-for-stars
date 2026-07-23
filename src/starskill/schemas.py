@@ -487,6 +487,7 @@ class SkyChartObject(InputModel):
     altaz: SkyChartAltAzCoordinates
     visible: bool
     drawn: bool
+    illumination_fraction: float | None = Field(default=None, ge=0, le=1)
 
 
 class SkyChartExportTarget(InputModel):
