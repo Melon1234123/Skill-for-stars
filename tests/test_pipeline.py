@@ -47,7 +47,7 @@ def fixed_clock() -> datetime:
     return datetime(2026, 7, 19, 1, 0, tzinfo=timezone.utc)
 
 
-def test_run_pipeline_generates_auditable_complete_artifacts(tmp_path) -> None:
+def test_run_pipeline_generates_chinese_report_for_zh_cn_task(tmp_path) -> None:
     assert hasattr(starskill, "run_pipeline"), "pipeline runner is missing"
     output_dir = tmp_path / "run"
 
@@ -87,9 +87,12 @@ def test_run_pipeline_generates_auditable_complete_artifacts(tmp_path) -> None:
 
     report = (output_dir / "report.md").read_text(encoding="utf-8")
     checklist = (output_dir / "review_checklist.md").read_text(encoding="utf-8")
-    assert "## Calculated Facts" in report
-    assert "## Rule-based Assessment" in report
-    assert "## Human Review Required" in report
+    assert "# 观测报告" in report
+    assert "## 计算事实" in report
+    assert "- 目标：M 42" in report
+    assert "## 规则判定" in report
+    assert "## 需要人工复核" in report
+    assert "Observation Report" not in report
     assert "- [ ]" in checklist
 
 
