@@ -1,5 +1,7 @@
 import pytest
 
+from pydantic import ValidationError
+
 from starskill.schemas import ResolvedTarget, SkyChartTarget, TargetSource
 from starskill.sky_chart_targets import SkyChartTargetResolver
 from starskill.target_resolver import TargetNotFoundError, TargetServiceError
@@ -70,6 +72,19 @@ def test_external_resolver_receives_only_validated_stripped_text() -> None:
     assert result is not None
     assert result.label == "Example"
     assert result.source == "existing_resolver"
+
+
+@pytest.mark.parametrize("unsafe_name", ["M42\u0085", "M42\u200e"])
+def test_unicode_control_or_format_target_name_cannot_reach_resolver(
+    unsafe_name: str,
+) -> None:
+    called: list[str] = []
+    resolver = SkyChartTargetResolver(external_resolver=called.append)
+
+    with pytest.raises(ValidationError, match="safe visible"):
+        resolver.resolve(SkyChartTarget(mode="name", name=unsafe_name))
+
+    assert called == []
 
 
 @pytest.mark.parametrize("error", [TargetNotFoundError("missing"), TargetServiceError("down")])

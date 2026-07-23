@@ -1,7 +1,9 @@
 """Structured input models for observation tasks."""
 
 from datetime import datetime, timedelta, timezone
+import re
 from typing import Literal
+import unicodedata
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import (
@@ -16,6 +18,12 @@ from pydantic import (
 
 class InputModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
+
+
+_SKY_CHART_COORDINATE_JSON_PATTERN = re.compile(
+    r'("(?:longitude|latitude|ra_deg|dec_deg|altitude_deg|azimuth_deg)"\s*:\s*)'
+    r'(-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?)(?=\s*[,}])'
+)
 
 
 class Observer(InputModel):
@@ -373,11 +381,15 @@ class SkyChartTarget(InputModel):
         if self.mode == "name":
             if self.ra_deg is not None or self.dec_deg is not None or not self.name:
                 raise ValueError("name target requires only a visible 1..120 character name")
+            if any(
+                unicodedata.category(character) in {"Cc", "Cf"}
+                for character in self.name
+            ):
+                raise ValueError("name target requires only a safe visible 1..120 character name")
             name = self.name.strip()
             if (
                 not name
                 or len(name) > 120
-                or any(ord(character) < 32 or ord(character) == 127 for character in name)
                 or any(
                     character in name
                     for character in ":/?#&%\\\"';|<>`$(){}[]*!~"
@@ -602,6 +614,14 @@ class SkyChartExportMetadata(InputModel):
     @field_serializer("created_at_utc", when_used="json")
     def serialize_created_at_utc(self, value: datetime) -> str:
         return value.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+
+    def model_dump_json(self, **kwargs: object) -> str:
+        """Serialize export coordinates as six-place JSON numbers, never strings."""
+        serialized = super().model_dump_json(**kwargs)
+        return _SKY_CHART_COORDINATE_JSON_PATTERN.sub(
+            lambda match: f"{match.group(1)}{float(match.group(2)):.6f}",
+            serialized,
+        )
 
 
 class TonightRecommendationRequest(InputModel):

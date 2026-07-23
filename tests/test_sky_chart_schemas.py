@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+import json
 
 import pytest
 from pydantic import ValidationError
@@ -157,6 +158,52 @@ def test_export_metadata_enforces_fixed_calculation_provenance() -> None:
     payload["calculation"]["iers_auto_download"] = True  # type: ignore[index]
     with pytest.raises(ValidationError, match="iers_auto_download"):
         SkyChartExportMetadata.model_validate(payload)
+
+
+def test_export_metadata_json_writes_six_decimal_coordinate_number_tokens() -> None:
+    payload = valid_metadata()
+    observer = payload["request"]["observer"]  # type: ignore[index]
+    observer["longitude"] = 116  # type: ignore[index]
+    observer["latitude"] = 83  # type: ignore[index]
+    moon = payload["objects"]["moon"]  # type: ignore[index]
+    moon["icrs"] = {"ra_deg": 83, "dec_deg": 10}  # type: ignore[index]
+    moon["altaz"] = {"altitude_deg": 10, "azimuth_deg": 116}  # type: ignore[index]
+
+    serialized = SkyChartExportMetadata.model_validate(payload).model_dump_json(
+        by_alias=True,
+        exclude_none=False,
+    )
+
+    assert '"longitude":116.000000' in serialized
+    assert '"latitude":83.000000' in serialized
+    assert '"ra_deg":83.000000' in serialized
+    assert '"dec_deg":10.000000' in serialized
+    assert '"altitude_deg":10.000000' in serialized
+    assert '"azimuth_deg":116.000000' in serialized
+    assert '"longitude":"116.000000"' not in serialized
+    assert json.loads(serialized)["request"]["observer"]["longitude"] == 116.0
+
+
+def test_export_metadata_json_preserves_pydantic_field_selection_options() -> None:
+    metadata = SkyChartExportMetadata.model_validate(valid_metadata())
+
+    serialized = metadata.model_dump_json(
+        include={"request": {"observer": {"longitude"}}, "objects": {"moon"}},
+        exclude={"objects": {"moon": {"label"}}},
+        exclude_none=True,
+        by_alias=True,
+    )
+
+    assert json.loads(serialized) == {
+        "request": {"observer": {"longitude": 116.4074}},
+        "objects": {
+            "moon": {
+                "altaz": {"altitude_deg": 10.0, "azimuth_deg": 20.0},
+                "visible": True,
+                "drawn": True,
+            }
+        },
+    }
 
 
 def test_render_response_exposes_only_urls_and_layer_status() -> None:
