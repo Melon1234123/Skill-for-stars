@@ -104,11 +104,16 @@ class StaticNasaProvider:
 class StaticStellariumBridge:
     def sync(self, request: object) -> dict[str, object]:
         return {
-            "ok": True,
+            "ok": 1,
             "base_url": "http://127.0.0.1:8090",
             "operations": ["status", "location", "time", "focus"],
             "error": None,
         }
+
+
+class MalformedStellariumBridge:
+    def sync(self, request: object) -> dict[str, object]:
+        return {"ok": True}
 
 
 def load_observation_payload() -> dict[str, object]:
@@ -119,7 +124,11 @@ def load_observation_payload() -> dict[str, object]:
     )
 
 
-def make_service_with_fake_outreach_providers(tmp_path: Path) -> StarSkillMcpService:
+def make_service_with_fake_outreach_providers(
+    tmp_path: Path,
+    *,
+    stellarium_bridge_factory=StaticStellariumBridge,
+) -> StarSkillMcpService:
     return StarSkillMcpService(
         runs_root=tmp_path / "runs",
         target_cache_dir=tmp_path / "target-cache",
@@ -128,7 +137,7 @@ def make_service_with_fake_outreach_providers(tmp_path: Path) -> StarSkillMcpSer
         weather_provider_factory=StaticWeatherProvider,
         light_pollution_provider_factory=StaticLightPollutionProvider,
         nasa_provider_factory=StaticNasaProvider,
-        stellarium_bridge_factory=StaticStellariumBridge,
+        stellarium_bridge_factory=stellarium_bridge_factory,
         clock=lambda: datetime(2026, 7, 23, 8, 0, tzinfo=timezone.utc),
     )
 
@@ -257,8 +266,30 @@ def test_outreach_tools_validate_and_write_server_owned_resources(tmp_path) -> N
     assert conditions["resources"]["conditions"].endswith("/conditions")
     assert nasa["result"]["title"] == "Test APOD"
     assert nasa["resources"]["nasa-feature"].endswith("/nasa-feature")
+    assert stellarium["result"]["ok"] is True
     assert stellarium["result"]["operations"] == ["status", "location", "time", "focus"]
     assert stellarium["resources"]["stellarium-sync"].endswith("/stellarium-sync")
+    assert stellarium["result"] == json.loads(
+        service.read_run_resource(stellarium["run_id"], "stellarium-sync")
+    )
+
+
+def test_malformed_stellarium_bridge_output_is_not_persisted(tmp_path) -> None:
+    service = make_service_with_fake_outreach_providers(
+        tmp_path,
+        stellarium_bridge_factory=MalformedStellariumBridge,
+    )
+
+    result = service.sync_stellarium(
+        {
+            "observer": load_observation_payload()["observer"],
+            "timestamp": "2026-07-23T20:00:00+08:00",
+            "target": "M 42",
+        }
+    )
+
+    assert result["ok"] is False
+    assert "stellarium-sync" not in result["resources"]
 
 
 def test_stdio_server_advertises_supported_tools_and_run_resources(tmp_path) -> None:

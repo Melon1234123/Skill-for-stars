@@ -1,16 +1,15 @@
 """MCP adapter for the traceable StarSkill astronomy workflows."""
 
-import json
 import os
 import re
 from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 from uuid import uuid4
 
 from mcp.server.fastmcp import FastMCP
-from pydantic import TypeAdapter, ValidationError
+from pydantic import BaseModel, ConfigDict, TypeAdapter, ValidationError
 
 from starskill.light_pollution import (
     BLACK_MARBLE_PROVIDER,
@@ -75,6 +74,17 @@ RUN_RESOURCE_PATHS = {
 }
 
 _NASA_DATE = TypeAdapter(str | None)
+
+
+class StellariumSyncResult(BaseModel):
+    """Validated fixed-operation outcome returned by the local bridge."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    ok: bool
+    base_url: str
+    operations: list[Literal["status", "location", "time", "focus"]]
+    error: Literal["connection_error"] | None
 
 
 def _validation_failure(exc: ValidationError) -> dict[str, Any]:
@@ -347,17 +357,14 @@ class StarSkillMcpService:
             return _validation_failure(exc)
 
         run_id, output_dir = self._new_run("stellarium-sync")
-        result = self.stellarium_bridge_factory().sync(validated_request)
-        (output_dir / "stellarium_sync.json").write_text(
-            json.dumps(result, ensure_ascii=False, indent=2),
-            encoding="utf-8",
-        )
-        return {
-            "ok": bool(result["ok"]),
-            "run_id": run_id,
-            "resources": self._resources_for_run(run_id),
-            "result": result,
-        }
+        try:
+            result = StellariumSyncResult.model_validate(
+                self.stellarium_bridge_factory().sync(validated_request)
+            )
+        except ValidationError as exc:
+            return self._run_failure(run_id, exc)
+        self._write_model(output_dir / "stellarium_sync.json", result)
+        return self._model_result(run_id, result)
 
     def read_run_resource(self, run_id: str, resource: str) -> str:
         if not RUN_ID_PATTERN.fullmatch(run_id):
