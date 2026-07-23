@@ -1,18 +1,20 @@
 # HYG v4.1 source verification
 
-The official HYG page identifies Codeberg as the source host. Its direct v4.1
-asset was fetched into `/tmp/astronexus-v41.tmp`, outside this repository. The
-official Codeberg history records HYG v4.1 under the release transition commit
-`b457d51b235aae40fb3ac9fa6ad7554d237c406d` (`v4.1 -> v4.2: 34 new proper
-names from the IAU in the last 14 months`, dated `2025-06-29T12:52:06-07:00`).
-The official page states that HYG is hosted at Codeberg and that its hosted copy
-is the most recent saved there. The Codeberg README says versions since v4.0
-are CC BY-SA 4.0.
+The official HYG page identifies Codeberg as the current source host. Its
+direct v4.1 asset was fetched into `/tmp/astronexus-v41.tmp`, outside this
+repository. For the historical v4.1 release date, the former official HYG
+repository at `https://github.com/astronexus/HYG-Database` is the applicable
+upstream: its README states that future updates moved to Codeberg. Its commit
+`5283c6086806d0cdb19cf0d91d84102d8ec3289b` explicitly says `Add v4.1 of HYG`
+and has the observed commit timestamp below. This is the v4.1 release evidence;
+the later v4.1-to-v4.2 transition is not used to date v4.1. The Codeberg README
+says versions since v4.0 are CC BY-SA 4.0.
 
 | Field | Observed value |
 | --- | --- |
 | Official release page | `https://www.astronexus.com/projects/hyg` |
 | Release tag | `4.1` |
+| Release date | `2024-01-20T09:49:29-08:00` |
 | Asset URL | `https://www.astronexus.com/downloads/catalogs/hygdata_v41.csv.gz` |
 | Asset filename | `hygdata_v41.csv.gz` |
 | License | `CC BY-SA 4.0; https://creativecommons.org/licenses/by-sa/4.0/deed.en` |
@@ -24,8 +26,26 @@ are CC BY-SA 4.0.
 Observed commands: `curl -fsSL -D /tmp/astronexus-v41.headers -o
 /tmp/astronexus-v41.tmp https://www.astronexus.com/downloads/catalogs/hygdata_v41.csv.gz`,
 `wc -c /tmp/astronexus-v41.tmp`, `shasum -a 256 /tmp/astronexus-v41.tmp`, and
-`git -C /tmp/hyg-official-source-20260723 log --all --format='%H %ad %s'
---date=iso-strict -- data/hyg/version-info.md`.
+`git -C /tmp/hyg-github-official-20260723 show --format=fuller --no-patch
+5283c6086806d0cdb19cf0d91d84102d8ec3289b`.
+
+## Raw official release-history evidence
+
+The historical official GitHub repository was cloned outside the project with
+`git clone --filter=blob:none --no-checkout
+https://github.com/astronexus/HYG-Database.git
+/tmp/hyg-github-official-20260723`. The release commit was observed with the
+command above:
+
+```text
+commit 5283c6086806d0cdb19cf0d91d84102d8ec3289b
+Author:     David Nash <Dpnash1@gmail.com>
+AuthorDate: Sat Jan 20 09:49:29 2024 -0800
+Commit:     David Nash <Dpnash1@gmail.com>
+CommitDate: Sat Jan 20 09:49:29 2024 -0800
+
+    Add v4.1 of HYG (see README for verson details)
+```
 
 ## Raw asset response headers
 
@@ -47,8 +67,10 @@ Content-Type: application/x-gzip
 This command downloads the official asset to a fresh directory under `/tmp`,
 then uses only the Python standard library to reproduce the packaged selection:
 unique HR records sorted by HYG magnitude, with magnitude at most 3.0. It
-compares every packaged `star_id`, right ascension, declination, and magnitude.
-It does not write the downloaded asset into this repository.
+compares every shipped field. `name` is HYG's exact nonempty `proper` value,
+or, when `proper` is empty, its exact `bf` (Bayer/Flamsteed) value. This is a
+source-column fallback, not a display-name normalizer. It does not write the
+downloaded asset into this repository.
 
 ```sh
 asset_dir=$(mktemp -d /tmp/starskill-hyg-v41.XXXXXX)
@@ -77,6 +99,7 @@ for row in sorted(rows, key=lambda item: float(item["mag"])):
     expected.append(
         {
             "star_id": star_id,
+            "name": row["proper"] or row["bf"],
             "ra_deg": round(float(row["ra"]) * 15, 6),
             "dec_deg": round(float(row["dec"]), 6),
             "magnitude": float(row["mag"]),
@@ -85,7 +108,10 @@ for row in sorted(rows, key=lambda item: float(item["mag"])):
     if len(expected) == 100:
         break
 actual = [
-    {key: star[key] for key in ("star_id", "ra_deg", "dec_deg", "magnitude")}
+    {
+        key: star[key]
+        for key in ("star_id", "name", "ra_deg", "dec_deg", "magnitude")
+    }
     for star in packaged
 ]
 assert expected == actual, "packaged records differ from official HYG v4.1 selection"

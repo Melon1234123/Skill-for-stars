@@ -86,6 +86,20 @@ def test_hyg_source_rejects_malformed_fixed_metadata(
         load_hyg_source()
 
 
+def test_catalog_resource_replacement_does_not_read_existing_resource(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    resources = _catalog_resources()
+
+    def unexpected_read_json(name: str) -> object:
+        raise AssertionError(f"attempted to read original resource {name}")
+
+    monkeypatch.setattr(catalog_module, "_read_json", unexpected_read_json)
+    _replace_catalog_resources(monkeypatch, resources)
+
+    assert len(load_bundled_catalog().stars) == 100
+
+
 def _catalog_resources() -> dict[str, object]:
     return {
         name: json.loads(files("starskill").joinpath("data", name).read_text(encoding="utf-8"))
@@ -103,7 +117,9 @@ def _replace_catalog_resources(
     original_read_json = catalog_module._read_json
 
     def read_json(name: str) -> object:
-        return copy.deepcopy(resources.get(name, original_read_json(name)))
+        if name in resources:
+            return copy.deepcopy(resources[name])
+        return original_read_json(name)
 
     monkeypatch.setattr(catalog_module, "_read_json", read_json)
 
