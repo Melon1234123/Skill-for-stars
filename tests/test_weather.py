@@ -213,6 +213,10 @@ def test_weather_provider_reports_invalid_numeric_values_as_unavailable(
     ).get_forecast(make_conditions_request())
 
     assert result.samples == []
+    assert result.source.provider == "Open-Meteo"
+    assert result.source.source_url is not None
+    assert result.source.accessed_at == fixed_clock()
+    assert result.source.from_cache is False
     assert result.source.availability == "unavailable"
     assert result.source.issue_code == ExternalDataFormatError.code
 
