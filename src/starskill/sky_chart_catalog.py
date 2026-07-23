@@ -237,7 +237,7 @@ class FullCatalogCache:
                 _restore_published_file(self.catalog_path, catalog_backup, self.cache_root)
                 _restore_published_file(self.manifest_path, manifest_backup, self.cache_root)
             raise CatalogDownloadError(str(error)) from error
-        except (OSError, EOFError, UnicodeDecodeError, csv.Error, gzip.BadGzipFile) as error:
+        except Exception as error:
             if catalog_published:
                 _restore_published_file(self.catalog_path, catalog_backup, self.cache_root)
                 _restore_published_file(self.manifest_path, manifest_backup, self.cache_root)
@@ -252,37 +252,6 @@ class FullCatalogCache:
             ):
                 if temporary_path is not None:
                     _unlink_temp(temporary_path)
-
-    def publish_fixture_for_test(self, csv_bytes: bytes) -> None:
-        """Publish a verified CSV fixture without contacting a fetcher.
-
-        This narrow helper exists for cache integrity tests; production callers use
-        :meth:`download_and_publish`, which verifies the compressed release bytes.
-        """
-        _, row_count = _parse_hyg_csv(csv_bytes)
-        csv_sha256 = sha256(csv_bytes).hexdigest()
-        csv_temp = _named_temp(self.cache_root, "catalog-")
-        manifest_temp: Path | None = None
-        try:
-            csv_temp.write_bytes(csv_bytes)
-            manifest = canonical_manifest(
-                source=self.source,
-                compressed_sha256=self.source.compressed_sha256,
-                csv_sha256=csv_sha256,
-                row_count=row_count,
-                headers={},
-            )
-            manifest_temp = _named_temp(self.cache_root, "manifest-")
-            manifest_temp.write_text(
-                json.dumps(manifest, sort_keys=True, separators=(",", ":")), encoding="utf-8"
-            )
-            os.replace(csv_temp, self.catalog_path)
-            os.replace(manifest_temp, self.manifest_path)
-        finally:
-            _unlink_temp(csv_temp)
-            if manifest_temp is not None:
-                _unlink_temp(manifest_temp)
-
 
 def canonical_manifest(
     *,

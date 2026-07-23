@@ -5,6 +5,7 @@ from importlib.resources import files
 import json
 from pathlib import Path
 from typing import Iterable, Mapping
+import zlib
 
 import pytest
 
@@ -36,6 +37,11 @@ class FakeFetcher:
     def stream(self, url: str, *, max_bytes: int) -> tuple[int, Mapping[str, str], Iterable[bytes]]:
         self.urls.append(url)
         return self.status, self.headers, self.chunks
+
+
+class RaisingFetcher:
+    def stream(self, url: str, *, max_bytes: int) -> tuple[int, Mapping[str, str], Iterable[bytes]]:
+        raise RuntimeError("fixture fetcher failure")
 
 
 @pytest.fixture
@@ -231,16 +237,14 @@ def test_download_rejects_csv_with_fewer_than_minimum_rows(tmp_path: Path) -> No
 
 
 def test_load_valid_rejects_tampered_published_csv(tmp_path: Path, hyg_csv_bytes: bytes) -> None:
-    cache = FullCatalogCache(tmp_path, load_hyg_source())
-    cache.publish_fixture_for_test(hyg_csv_bytes)
+    cache = _publish_valid_cache(tmp_path, hyg_csv_bytes)
     cache.catalog_path.write_bytes(hyg_csv_bytes + b"# tampered\n")
 
     assert cache.load_valid() is None
 
 
 def test_invalid_download_keeps_prior_valid_cache(tmp_path: Path, hyg_csv_bytes: bytes) -> None:
-    cache = FullCatalogCache(tmp_path, load_hyg_source())
-    cache.publish_fixture_for_test(hyg_csv_bytes)
+    cache = _publish_valid_cache(tmp_path, hyg_csv_bytes)
     before_catalog = cache.catalog_path.read_bytes()
     before_manifest = cache.manifest_path.read_bytes()
 
@@ -255,8 +259,7 @@ def test_invalid_download_keeps_prior_valid_cache(tmp_path: Path, hyg_csv_bytes:
 def test_manifest_publish_failure_rolls_back_prior_cache(
     tmp_path: Path, hyg_csv_bytes: bytes, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    prior_cache = FullCatalogCache(tmp_path, load_hyg_source())
-    prior_cache.publish_fixture_for_test(hyg_csv_bytes)
+    prior_cache = _publish_valid_cache(tmp_path, hyg_csv_bytes)
     before_catalog = prior_cache.catalog_path.read_bytes()
     before_manifest = prior_cache.manifest_path.read_bytes()
     replacement_csv = hyg_csv_bytes.replace(b"Fixture Star 1", b"Replacement Star", 1)
@@ -279,6 +282,60 @@ def test_manifest_publish_failure_rolls_back_prior_cache(
 
     assert cache.catalog_path.read_bytes() == before_catalog
     assert cache.manifest_path.read_bytes() == before_manifest
+    assert prior_cache.load_valid() is not None
+
+
+def test_manifest_publish_failure_on_fresh_cache_leaves_no_artifacts(
+    tmp_path: Path, hyg_csv_bytes: bytes, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    archive = gzip.compress(hyg_csv_bytes)
+    cache = FullCatalogCache(tmp_path, _test_source(archive))
+    real_replace = catalog_module.os.replace
+
+    def fail_manifest_replace(source: Path | str, destination: Path | str) -> None:
+        if Path(destination) == cache.manifest_path:
+            raise OSError("fixture manifest rename failure")
+        real_replace(source, destination)
+
+    monkeypatch.setattr(catalog_module.os, "replace", fail_manifest_replace)
+
+    with pytest.raises(CatalogDownloadError, match="could not be validated"):
+        cache.download_and_publish(FakeFetcher(chunks=[archive]))
+
+    assert not cache.catalog_path.exists()
+    assert not cache.manifest_path.exists()
+    assert list(cache.cache_root.glob("*.tmp")) == []
+
+
+def test_download_converts_fetcher_and_chunk_failures_and_cleans_up(
+    tmp_path: Path, hyg_csv_bytes: bytes
+) -> None:
+    archive = gzip.compress(hyg_csv_bytes)
+    cache = FullCatalogCache(tmp_path, _test_source(archive))
+
+    with pytest.raises(CatalogDownloadError, match="could not be validated"):
+        cache.download_and_publish(RaisingFetcher())
+
+    def interrupted_chunks() -> Iterable[bytes]:
+        yield archive[:16]
+        raise RuntimeError("fixture chunk iteration failure")
+
+    with pytest.raises(CatalogDownloadError, match="could not be validated"):
+        cache.download_and_publish(FakeFetcher(chunks=interrupted_chunks()))
+
+    assert not cache.catalog_path.exists()
+    assert not cache.manifest_path.exists()
+    assert list(cache.cache_root.glob("*.tmp")) == []
+
+
+def test_gzip_filename_cannot_change_fixed_catalog_path(tmp_path: Path, hyg_csv_bytes: bytes) -> None:
+    archive = _gzip_with_filename(hyg_csv_bytes, "../../outside/catalog.csv")
+    cache = FullCatalogCache(tmp_path, _test_source(archive))
+
+    cache.download_and_publish(FakeFetcher(chunks=[archive]))
+
+    assert cache.catalog_path.read_bytes() == hyg_csv_bytes
+    assert not (tmp_path / "outside" / "catalog.csv").exists()
 
 
 def test_failed_download_never_publishes_partial_cache(tmp_path: Path) -> None:
@@ -331,4 +388,24 @@ def _test_source(archive: bytes) -> HygSource:
         version="4.1",
         license="fixture license",
         compressed_sha256=sha256(archive).hexdigest(),
+    )
+
+
+def _publish_valid_cache(tmp_path: Path, hyg_csv_bytes: bytes) -> FullCatalogCache:
+    archive = gzip.compress(hyg_csv_bytes)
+    cache = FullCatalogCache(tmp_path, _test_source(archive))
+    cache.download_and_publish(FakeFetcher(chunks=[archive]))
+    return cache
+
+
+def _gzip_with_filename(data: bytes, filename: str) -> bytes:
+    compressed = zlib.compressobj(wbits=-zlib.MAX_WBITS)
+    deflated = compressed.compress(data) + compressed.flush()
+    return (
+        b"\x1f\x8b\x08\x08\x00\x00\x00\x00\x00\xff"
+        + filename.encode("latin-1")
+        + b"\x00"
+        + deflated
+        + zlib.crc32(data).to_bytes(4, "little")
+        + (len(data) & 0xFFFFFFFF).to_bytes(4, "little")
     )
