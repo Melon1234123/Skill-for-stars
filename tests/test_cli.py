@@ -35,10 +35,16 @@ def test_readme_documents_python_only_sky_chart() -> None:
         for name, path in runtime_documents.items()
     }
     text = document_text["README"]
+    hyg_source = (PROJECT_ROOT / "docs" / "sources" / "hyg-v4.1.md").read_text(
+        encoding="utf-8"
+    )
 
     assert 'pip install -e ".[dev]"' in text
     assert "starskill sky-chart --open" in text
     assert ".venv/bin/starskill sky-chart --open" in document_text["Skill"]
+    assert text.count("```") % 2 == 0
+    assert "```text\nverified 100 packaged HYG v4.1 records\n```" in hyg_source
+    assert "packaged HYG v4.1 records against /tmp" not in hyg_source
     for name, value in document_text.items():
         for legacy_dependency in (
             r"\bnode(?:\.js)?\b",
@@ -51,6 +57,25 @@ def test_readme_documents_python_only_sky_chart() -> None:
             assert re.search(legacy_dependency, value) is None, (
                 f"{name} contains legacy browser dependency {legacy_dependency!r}"
             )
+
+
+def test_changed_public_documents_have_no_trailing_whitespace() -> None:
+    public_documents = (
+        PROJECT_ROOT / "README.md",
+        PROJECT_ROOT / "docs" / "mcp-server.md",
+        PROJECT_ROOT / "docs" / "sources" / "hyg-v4.1.md",
+        PROJECT_ROOT
+        / "docs"
+        / "superpowers"
+        / "specs"
+        / "2026-07-23-live-outreach-design.md",
+        PROJECT_ROOT / "skills" / "run-starskill" / "SKILL.md",
+        PROJECT_ROOT / "skills" / "run-starskill" / "references" / "cli-contract.md",
+    )
+
+    for path in public_documents:
+        for line_number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+            assert line == line.rstrip(" \t"), f"{path}:{line_number} has trailing whitespace"
 
 
 def source_checkout_environment() -> dict[str, str]:
@@ -674,13 +699,29 @@ def test_download_catalog_unusable_cache_directory_is_stable(
     assert started == []
 
 
-def test_sky_chart_passes_only_loopback_port_and_open_flag(monkeypatch) -> None:
+def test_sky_chart_passes_only_loopback_port_open_flag_and_catalog_cache(
+    tmp_path: Path, monkeypatch
+) -> None:
     observed = []
     monkeypatch.setattr(cli, "run_web_server", lambda **kwargs: observed.append(kwargs))
 
-    assert main(["sky-chart", "--port", "8123", "--open"]) == 0
+    assert (
+        main(
+            [
+                "sky-chart",
+                "--port",
+                "8123",
+                "--open",
+                "--catalog-cache-dir",
+                str(tmp_path),
+            ]
+        )
+        == 0
+    )
 
-    assert observed == [{"port": 8123, "open_browser": True}]
+    assert observed == [
+        {"port": 8123, "open_browser": True, "catalog_cache_dir": tmp_path}
+    ]
 
 
 def test_sky_chart_server_start_failure_is_stable(monkeypatch, capsys) -> None:

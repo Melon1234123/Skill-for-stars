@@ -122,5 +122,5 @@ PY
 Executed successfully on 2026-07-23, printing:
 
 ```text
-verified 100 packaged HYG v4.1 records against /tmp/starskill-hyg-v41.i4deg5/hygdata_v41.csv.gz
+verified 100 packaged HYG v4.1 records
 ```

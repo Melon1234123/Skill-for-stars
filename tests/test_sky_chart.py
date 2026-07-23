@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 from hashlib import sha256
 from io import BytesIO
 import json
+from pathlib import Path
 import re
 
 from PIL import Image, ImageChops
@@ -126,6 +127,9 @@ def test_render_has_expected_layer_order_and_linked_png_digest(fixed_chart) -> N
     assert fixed_chart.metadata.render.png_sha256 == sha256(
         fixed_chart.png_bytes
     ).hexdigest()
+    assert fixed_chart.metadata.catalog.constellation_segments.sha256 != (
+        fixed_chart.metadata.catalog.sha256
+    )
     assert fixed_chart.metadata.calculation.horizontal_frame == "AltAz"
     assert fixed_chart.metadata.calculation.atmospheric_refraction is False
 
@@ -259,6 +263,9 @@ def test_constellation_segment_requires_both_endpoints_above_horizon() -> None:
         ),
         segments=(ConstellationSegment("Test", "north", "south"),),
         metadata=CatalogMetadata("test", "1", "https://example.test", "CC0", "a" * 64),
+        segment_metadata=CatalogMetadata(
+            "test", "1", "https://example.test", "CC0", "b" * 64
+        ),
     )
     request = FIXED_REQUEST.model_copy(
         update={
@@ -270,7 +277,13 @@ def test_constellation_segment_requires_both_endpoints_above_horizon() -> None:
     )
     chart = SkyChartRenderer(utc_clock=lambda: FIXED_CREATED_AT).render(
         request,
-        CatalogSelection("bundled", "available", catalog, catalog.segments),
+        CatalogSelection(
+            "bundled",
+            "available",
+            catalog,
+            catalog.segment_metadata,
+            catalog.segments,
+        ),
         None,
     )
     assert chart.metadata.objects.stars_drawn == 1
@@ -308,6 +321,44 @@ def test_target_resolution_failures_become_stable_warning_only(
     assert chart.metadata.objects.target is None
     assert chart.metadata.warnings == [warning]
     assert "private detail" not in serialized
+
+
+def test_target_cache_write_failure_becomes_stable_nonfatal_warning(
+    tmp_path: Path,
+) -> None:
+    blocked_parent = tmp_path / "blocked"
+    blocked_parent.write_text("not a directory", encoding="utf-8")
+
+    class StaticBackend:
+        service_url = "https://simbad.example.test"
+
+        def query_object(self, _query_name: str) -> dict[str, object]:
+            return {
+                "canonical_name": "Example",
+                "ra_deg": 1.0,
+                "dec_deg": 2.0,
+                "object_type": "Star",
+                "aliases": [],
+            }
+
+    request = FIXED_REQUEST.model_copy(
+        update={
+            "target": FIXED_REQUEST.target.model_copy(
+                update={"mode": "name", "name": "Example", "ra_deg": None, "dec_deg": None}
+            )
+        }
+    )
+
+    chart = SkyChartService(
+        full_catalog_cache=EmptyFullCache(),
+        target_cache_dir=blocked_parent / "cache",
+        target_backend=StaticBackend(),
+        utc_clock=lambda: FIXED_CREATED_AT,
+    ).render(request)
+
+    assert chart.metadata.objects.target is None
+    assert chart.metadata.warnings == ["target_resolution_unavailable"]
+    assert str(blocked_parent) not in chart.metadata.model_dump_json()
 
 
 def test_none_target_resolution_becomes_target_unresolved() -> None:
@@ -365,6 +416,9 @@ def test_full_catalog_draws_segments_from_bundled_endpoint_stars() -> None:
         ),
         segments=(ConstellationSegment("Test", "a", "b"),),
         metadata=CatalogMetadata("bundled", "1", "https://example.test/b", "CC0", "a" * 64),
+        segment_metadata=CatalogMetadata(
+            "bundled", "1", "https://example.test/b", "CC0", "c" * 64
+        ),
     )
     full = FullCatalog(
         stars=(CatalogStar("hyg-1", "Full", 180, 90, 1),),

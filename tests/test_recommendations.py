@@ -131,6 +131,12 @@ def make_light(radiance: float | None = 18.5) -> LightPollutionResult:
     )
 
 
+def test_human_review_requires_input_location_and_time_confirmation() -> None:
+    assert HUMAN_REVIEW_ITEMS[0] == (
+        "Verify the target, date, timezone, longitude, and latitude."
+    )
+
+
 def test_recommendation_downgrades_heavy_cloud() -> None:
     result = recommend_tonight(make_plan(), make_weather(92, 0), make_light())
 

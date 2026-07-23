@@ -567,12 +567,16 @@ class SkyChartObjectsMetadata(InputModel):
     constellation_segments_drawn: int = Field(ge=0)
 
 
-class SkyChartCatalogMetadata(InputModel):
+class SkyChartCatalogSourceMetadata(InputModel):
     dataset_id: str = Field(min_length=1)
     version: str = Field(min_length=1)
     source_url: str = Field(min_length=1)
     license: str = Field(min_length=1)
     sha256: str = Field(pattern=_SHA256_PATTERN)
+
+
+class SkyChartCatalogMetadata(SkyChartCatalogSourceMetadata):
+    constellation_segments: SkyChartCatalogSourceMetadata
     status: Literal["available", "degraded"]
 
 

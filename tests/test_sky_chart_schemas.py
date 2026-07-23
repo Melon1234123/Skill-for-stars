@@ -124,6 +124,13 @@ def valid_metadata() -> dict[str, object]:
             "source_url": "https://example.test/catalog",
             "license": "CC-BY-4.0",
             "sha256": "b" * 64,
+            "constellation_segments": {
+                "dataset_id": "bundled-bright-stars",
+                "version": "2026.07.23",
+                "source_url": "https://example.test/catalog",
+                "license": "CC-BY-4.0",
+                "sha256": "c" * 64,
+            },
             "status": "available",
         },
         "calculation": {
@@ -147,6 +154,7 @@ def test_export_metadata_enforces_fixed_calculation_provenance() -> None:
     metadata = SkyChartExportMetadata.model_validate(valid_metadata())
     assert metadata.render.width_px == 1200
     assert metadata.calculation.time_scale == "UTC"
+    assert metadata.catalog.constellation_segments.sha256 == "c" * 64
     assert metadata.model_dump(mode="json")["created_at_utc"] == "2026-07-23T12:00:00Z"
 
     payload = valid_metadata()

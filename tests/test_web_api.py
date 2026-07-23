@@ -1,17 +1,29 @@
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime, timezone
+import gzip
+from hashlib import sha256
+import json
 from pathlib import Path
 import re
 from threading import Event
 from types import SimpleNamespace
+from typing import Iterable, Mapping
 
 from fastapi.testclient import TestClient
 import pytest
 
-from starskill.schemas import SkyChartRequest
+import starskill.cli as cli_module
+from starskill.schemas import ResolvedTarget, SkyChartRequest, TargetSource
 from starskill.sky_chart import RenderedSkyChart, SkyChartService
-from starskill.sky_chart_catalog import FullCatalogUnavailableError
+from starskill.sky_chart_catalog import (
+    FullCatalogUnavailableError,
+    HygSource,
+)
+import starskill.sky_chart_catalog as sky_chart_catalog_module
+import starskill.target_resolver as target_resolver_module
+from starskill.target_resolver import target_cache_path
 import starskill.web_api as web_api_module
 from starskill.web_api import FixedWindowRateLimiter, create_web_app
 from tests.test_mcp_server import (
@@ -62,6 +74,18 @@ class BrokenSkyChartService:
 class BrokenService:
     def get_observing_conditions(self, request: dict[str, object]) -> dict[str, object]:
         raise RuntimeError("cache directory /private/config should not be exposed")
+
+
+class BytesCatalogFetcher:
+    def __init__(self, body: bytes) -> None:
+        self.body = body
+
+    def stream(
+        self, url: str, *, max_bytes: int
+    ) -> tuple[int, Mapping[str, str], Iterable[bytes]]:
+        assert url.startswith("https://")
+        assert len(self.body) <= max_bytes
+        return 200, {"Content-Length": str(len(self.body))}, (self.body,)
 
 
 def make_client(
@@ -248,6 +272,99 @@ def test_render_limiter_allows_30th_and_rejects_31st_without_changing_legacy_bud
     assert client.get("/healthz").status_code == 200
 
 
+def test_malformed_render_consumes_only_the_dedicated_render_budget(
+    tmp_path: Path, rendered_chart: RenderedSkyChart
+) -> None:
+    legacy_limiter = FixedWindowRateLimiter(requests_per_minute=1)
+    render_limiter = FixedWindowRateLimiter(requests_per_minute=1)
+    client = make_client(
+        tmp_path,
+        rendered_chart,
+        rate_limiter=legacy_limiter,
+        sky_chart_rate_limiter=render_limiter,
+    )
+
+    malformed = client.post("/v1/sky-chart/render", json={"invalid": True})
+    limited = client.post(
+        "/v1/sky-chart/render", json=valid_sky_chart_payload()
+    )
+
+    assert malformed.status_code == 422
+    assert malformed.json() == {"detail": "Invalid sky-chart request"}
+    assert limited.status_code == 429
+    assert limited.json() == {"detail": "Too many requests"}
+    assert client.get("/healthz").status_code == 200
+    assert client.get("/healthz").status_code == 429
+
+
+def test_chunked_render_body_stops_reading_as_soon_as_16_kib_is_exceeded(
+    tmp_path: Path, rendered_chart: RenderedSkyChart
+) -> None:
+    sky_service = FakeSkyChartService(rendered_chart)
+    render_calls: list[SkyChartRequest] = []
+    original_render = sky_service.render
+
+    def record_render(request: SkyChartRequest) -> RenderedSkyChart:
+        render_calls.append(request)
+        return original_render(request)
+
+    sky_service.render = record_render  # type: ignore[method-assign]
+    app = create_web_app(
+        make_service_with_fake_outreach_providers(tmp_path),
+        sky_service,
+    )
+    request_events = [
+        {"type": "http.request", "body": b"x" * 9_000, "more_body": True},
+        {"type": "http.request", "body": b"y" * 9_000, "more_body": True},
+        {"type": "http.request", "body": b"must-not-be-read", "more_body": False},
+    ]
+    receive_calls = 0
+    response_events: list[dict[str, object]] = []
+
+    async def receive() -> dict[str, object]:
+        nonlocal receive_calls
+        receive_calls += 1
+        if request_events:
+            return request_events.pop(0)
+        return {"type": "http.disconnect"}
+
+    async def send(message: dict[str, object]) -> None:
+        response_events.append(message)
+
+    async def invoke() -> None:
+        await app(
+            {
+                "type": "http",
+                "asgi": {"version": "3.0", "spec_version": "2.4"},
+                "http_version": "1.1",
+                "method": "POST",
+                "scheme": "http",
+                "path": "/v1/sky-chart/render",
+                "raw_path": b"/v1/sky-chart/render",
+                "query_string": b"",
+                "root_path": "",
+                "headers": [(b"content-type", b"application/json")],
+                "client": ("127.0.0.1", 12345),
+                "server": ("127.0.0.1", 8000),
+            },
+            receive,
+            send,
+        )
+
+    asyncio.run(invoke())
+
+    start = next(event for event in response_events if event["type"] == "http.response.start")
+    body = b"".join(
+        event.get("body", b"")  # type: ignore[arg-type]
+        for event in response_events
+        if event["type"] == "http.response.body"
+    )
+    assert start["status"] == 413
+    assert json.loads(body) == {"detail": "Request body too large"}
+    assert receive_calls == 2
+    assert render_calls == []
+
+
 def test_render_does_not_consume_the_legacy_request_budget(
     tmp_path: Path, rendered_chart: RenderedSkyChart
 ) -> None:
@@ -392,6 +509,130 @@ def test_legacy_validation_rate_limit_and_generic_errors_remain_stable(
     assert "private" not in response.text
 
 
+def test_rate_limiter_prunes_expired_windows() -> None:
+    now = [0.0]
+    limiter = FixedWindowRateLimiter(
+        requests_per_minute=1, monotonic_clock=lambda: now[0]
+    )
+
+    for window in range(100):
+        now[0] = float(window * 60)
+        assert limiter.allow(f"client-{window}")[0] is True
+
+    assert len(limiter._requests) == 1
+    assert ("client-99", 99) in limiter._requests
+
+
+def test_download_cli_feeds_default_web_app_full_catalog_and_cached_target(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    csv_bytes = Path("tests/fixtures/sky_chart/hyg-valid.csv").read_bytes()
+    archive = gzip.compress(csv_bytes, mtime=0)
+    packaged_source = sky_chart_catalog_module.load_hyg_source()
+    source = HygSource(
+        url=packaged_source.url,
+        asset_name="hygdata_v41.csv.gz",
+        version="4.1",
+        license=packaged_source.license,
+        compressed_sha256=sha256(archive).hexdigest(),
+    )
+    catalog_cache_dir = tmp_path / "catalog-cache"
+    monkeypatch.setattr(cli_module, "load_hyg_source", lambda: source)
+    monkeypatch.setattr(
+        cli_module,
+        "HttpCatalogFetcher",
+        lambda: BytesCatalogFetcher(archive),
+    )
+    assert (
+        cli_module.main(
+            [
+                "sky-chart",
+                "--download-catalog",
+                "--catalog-cache-dir",
+                str(catalog_cache_dir),
+            ]
+        )
+        == 0
+    )
+    assert json.loads(capsys.readouterr().out)["downloaded"] is True
+
+    target_name = "NGC 1976"
+    target_cache_dir = tmp_path / "target-cache"
+    cached_target = ResolvedTarget(
+        input_name=target_name,
+        query_name=target_name,
+        canonical_name="Orion Nebula",
+        ra_deg=83.822083,
+        dec_deg=-5.391111,
+        object_type="HII",
+        aliases=["M 42"],
+        source=TargetSource(
+            database="SIMBAD",
+            service_url="https://simbad.example.test",
+            accessed_at="2026-01-01T00:00:00Z",
+            from_cache=False,
+        ),
+    )
+    cached_path = target_cache_path(target_cache_dir, target_name)
+    cached_path.parent.mkdir(parents=True)
+    cached_path.write_text(cached_target.model_dump_json(), encoding="utf-8")
+
+    monkeypatch.setattr(sky_chart_catalog_module, "load_hyg_source", lambda: source)
+    monkeypatch.setenv("STARSKILL_TARGET_CACHE_DIR", str(target_cache_dir))
+    monkeypatch.setenv("STARSKILL_RUNS_DIR", str(tmp_path / "runs"))
+
+    class ForbiddenNetworkBackend:
+        def __init__(self) -> None:
+            raise AssertionError("production composition attempted a live target lookup")
+
+    monkeypatch.setattr(target_resolver_module, "SimbadBackend", ForbiddenNetworkBackend)
+    client = TestClient(
+        web_api_module.default_web_app(catalog_cache_dir=catalog_cache_dir)
+    )
+    payload = valid_sky_chart_payload(catalog_mode="full")
+    payload["target"] = {"mode": "name", "name": target_name}
+
+    response = client.post("/v1/sky-chart/render", json=payload)
+
+    assert response.status_code == 200
+    result = response.json()
+    assert result["catalog_mode_used"] == "full"
+    assert result["catalog_status"] == "available"
+    metadata = client.get(result["json_url"])
+    assert metadata.status_code == 200
+    assert metadata.json()["request"]["target"]["resolved"]["label"] == "Orion Nebula"
+    assert str(tmp_path) not in response.text
+    assert str(tmp_path) not in metadata.text
+
+
+def test_default_web_app_maps_target_backend_failure_to_stable_warning(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("STARSKILL_TARGET_CACHE_DIR", str(tmp_path / "target-cache"))
+    monkeypatch.setenv("STARSKILL_RUNS_DIR", str(tmp_path / "runs"))
+
+    class FailingBackend:
+        service_url = "https://simbad.example.test"
+
+        def query_object(self, _query_name: str) -> object:
+            raise RuntimeError("resolver failed at /private/target-cache")
+
+    monkeypatch.setattr(target_resolver_module, "SimbadBackend", FailingBackend)
+    client = TestClient(
+        web_api_module.default_web_app(catalog_cache_dir=tmp_path / "catalog-cache")
+    )
+    payload = valid_sky_chart_payload()
+    payload["target"] = {"mode": "name", "name": "NGC 1976"}
+
+    response = client.post("/v1/sky-chart/render", json=payload)
+
+    assert response.status_code == 200
+    assert response.json()["warnings"] == ["target_resolution_unavailable"]
+    assert "private" not in response.text
+
+
 def test_run_web_server_rejects_invalid_port_before_constructing_app() -> None:
     called = False
 
@@ -446,6 +687,7 @@ def test_run_web_server_hard_binds_loopback_and_opens_after_health(
 
     assert observed["host"] == "127.0.0.1"
     assert observed["port"] == 8123
+    assert observed["proxy_headers"] is False
     assert observed["health_url"] == "http://127.0.0.1:8123/healthz"
     assert observed["browser_url"] == "http://127.0.0.1:8123/"
 
@@ -480,6 +722,72 @@ def test_bind_failure_propagates_without_opening_browser(
             browser_open=browser_open,
         )
     assert opened is False
+
+
+def test_bind_failure_without_open_does_not_print_success_url(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    class FailingServer:
+        started = False
+
+        def __init__(self, config: object) -> None:
+            self.config = config
+
+        def run(self) -> None:
+            raise OSError("address already in use")
+
+    monkeypatch.setattr(web_api_module.uvicorn, "Server", FailingServer)
+
+    with pytest.raises(OSError, match="address already in use"):
+        web_api_module.run_web_server(
+            8123,
+            False,
+            web_app_factory=lambda: object(),
+        )
+
+    assert capsys.readouterr().out == ""
+
+
+def test_non_browser_url_is_announced_only_after_health(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    announced = Event()
+    events: list[str] = []
+
+    class HealthyServer:
+        started = False
+
+        def __init__(self, config: object) -> None:
+            self.config = config
+
+        def run(self) -> None:
+            events.append("server-running")
+            self.started = True
+            assert announced.wait(timeout=1)
+
+    def health_get(_url: str) -> int:
+        events.append("health-ok")
+        return 200
+
+    def record_print(value: str) -> None:
+        events.append(f"printed:{value}")
+        announced.set()
+
+    monkeypatch.setattr(web_api_module.uvicorn, "Server", HealthyServer)
+    monkeypatch.setattr("builtins.print", record_print)
+
+    web_api_module.run_web_server(
+        8123,
+        False,
+        web_app_factory=lambda: object(),
+        health_get=health_get,
+    )
+
+    assert events == [
+        "server-running",
+        "health-ok",
+        "printed:http://127.0.0.1:8123/",
+    ]
 
 
 def test_main_parses_only_port_and_never_opens_browser(

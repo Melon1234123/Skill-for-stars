@@ -62,6 +62,7 @@ class BundledCatalog:
     stars: tuple[CatalogStar, ...]
     segments: tuple[ConstellationSegment, ...]
     metadata: CatalogMetadata
+    segment_metadata: CatalogMetadata
 
 
 @dataclass(frozen=True)
@@ -87,6 +88,7 @@ class CatalogSelection:
     mode_used: Literal["bundled", "full"]
     status: Literal["available", "degraded"]
     catalog: BundledCatalog | FullCatalog
+    segment_metadata: CatalogMetadata
     constellation_segments: tuple[ConstellationSegment, ...] = ()
     constellation_stars: tuple[CatalogStar, ...] = ()
 
@@ -292,6 +294,7 @@ def select_catalog(
             mode_used="bundled",
             status="available",
             catalog=bundled,
+            segment_metadata=bundled.segment_metadata,
             constellation_segments=bundled.segments,
             constellation_stars=bundled.stars,
         )
@@ -302,6 +305,7 @@ def select_catalog(
             mode_used="full",
             status="available",
             catalog=full,
+            segment_metadata=bundled.segment_metadata,
             constellation_segments=bundled.segments,
             constellation_stars=bundled.stars,
         )
@@ -310,6 +314,7 @@ def select_catalog(
             mode_used="bundled",
             status="degraded",
             catalog=bundled,
+            segment_metadata=bundled.segment_metadata,
             constellation_segments=bundled.segments,
             constellation_stars=bundled.stars,
         )
@@ -503,7 +508,12 @@ def load_bundled_catalog() -> BundledCatalog:
     ):
         raise ValueError("constellation segment references a star absent from the catalog")
 
-    return BundledCatalog(stars=stars, segments=segments, metadata=metadata)
+    return BundledCatalog(
+        stars=stars,
+        segments=segments,
+        metadata=metadata,
+        segment_metadata=segments_metadata,
+    )
 
 
 def load_hyg_source() -> HygSource:

@@ -1,6 +1,6 @@
 # StarSkill 实时科普与浏览器星图设计
 
-**状态：已确认，待实现**  
+**状态：已确认，待实现**
 **日期：2026-07-23**
 
 > **Web supersession (2026-07-23):** For `sky-chart`, `starskill-web`, browser dependencies, and local startup, this document is superseded by `2026-07-23-pure-python-local-sky-chart-design.md`. Its weather, light-pollution, NASA, recommendation, MCP, and optional desktop-Stellarium bridge requirements remain in force.

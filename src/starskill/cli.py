@@ -211,7 +211,11 @@ def main(argv: Sequence[str] | None = None) -> int:
             return 0
         try:
             with contextlib.redirect_stderr(io.StringIO()):
-                run_web_server(port=args.port, open_browser=args.open)
+                run_web_server(
+                    port=args.port,
+                    open_browser=args.open,
+                    catalog_cache_dir=args.catalog_cache_dir,
+                )
         except SystemExit as error:
             if error.code != 1:
                 raise

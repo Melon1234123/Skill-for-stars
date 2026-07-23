@@ -55,6 +55,8 @@ def test_bundled_catalog_is_available_from_installed_package_data() -> None:
     assert len(catalog.stars) >= 100
     assert catalog.metadata.dataset_id == "bundled-bright-stars"
     assert len(catalog.metadata.sha256) == 64
+    assert len(catalog.segment_metadata.sha256) == 64
+    assert catalog.segment_metadata.sha256 != catalog.metadata.sha256
     assert all(-90 <= star.dec_deg <= 90 and 0 <= star.ra_deg < 360 for star in catalog.stars)
     assert files("starskill").joinpath("data/bright_stars.json").is_file()
 
@@ -177,6 +179,7 @@ def test_download_publishes_verified_full_catalog(tmp_path: Path, hyg_csv_bytes:
     assert catalog.stars[0].ra_deg == 0.0
     assert catalog.stars[0].name == "Fixture Star 1"
     assert select_catalog("full", load_bundled_catalog(), cache).mode_used == "full"
+    assert select_catalog("auto", load_bundled_catalog(), cache).mode_used == "full"
 
 
 def test_download_rejects_non_200_response(tmp_path: Path) -> None:

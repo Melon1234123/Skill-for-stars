@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from hashlib import sha256
 from importlib import metadata as importlib_metadata
 import math
+from pathlib import Path
 import platform
 import re
 import secrets
@@ -15,7 +17,7 @@ import struct
 import threading
 import warnings
 import zlib
-from typing import Callable, Iterator, Protocol, Sequence
+from typing import Any, Callable, Iterator, Protocol, Sequence
 
 from astropy import units as u
 from astropy.coordinates import (
@@ -34,10 +36,12 @@ from matplotlib.figure import Figure
 from matplotlib.patches import Circle, Wedge
 import numpy as np
 
+import starskill.target_resolver as target_resolver_module
 from starskill.schemas import (
     SkyChartAltAzCoordinates,
     SkyChartCalculationMetadata,
     SkyChartCatalogMetadata,
+    SkyChartCatalogSourceMetadata,
     SkyChartDependenciesMetadata,
     SkyChartExportMetadata,
     SkyChartExportRequest,
@@ -60,8 +64,10 @@ from starskill.sky_chart_catalog import (
 from starskill.sky_chart_targets import ResolvedSkyTarget, SkyChartTargetResolver
 from starskill.target_resolver import (
     InvalidTargetNameError,
+    TargetBackend,
     TargetNotFoundError,
     TargetServiceError,
+    resolve_target,
 )
 
 
@@ -97,6 +103,18 @@ class _FullCatalogCache(Protocol):
 class _EmptyFullCatalogCache:
     def load_valid(self) -> None:
         return None
+
+
+class _LazySimbadBackend:
+    service_url = target_resolver_module.SimbadBackend.service_url
+
+    def __init__(self) -> None:
+        self._backend: TargetBackend | None = None
+
+    def query_object(self, query_name: str) -> Mapping[str, Any] | None:
+        if self._backend is None:
+            self._backend = target_resolver_module.SimbadBackend()
+        return self._backend.query_object(query_name)
 
 
 def utc_now() -> datetime:
@@ -319,6 +337,13 @@ class SkyChartRenderer:
                 source_url=selection.catalog.metadata.source_url,
                 license=selection.catalog.metadata.license,
                 sha256=selection.catalog.metadata.sha256,
+                constellation_segments=SkyChartCatalogSourceMetadata(
+                    dataset_id=selection.segment_metadata.dataset_id,
+                    version=selection.segment_metadata.version,
+                    source_url=selection.segment_metadata.source_url,
+                    license=selection.segment_metadata.license,
+                    sha256=selection.segment_metadata.sha256,
+                ),
                 status=selection.status,
             ),
             calculation=SkyChartCalculationMetadata(),
@@ -605,13 +630,24 @@ class SkyChartService:
         *,
         full_catalog_cache: _FullCatalogCache | None = None,
         target_resolver: SkyChartTargetResolver | None = None,
+        target_cache_dir: Path = Path("cache/targets"),
+        target_backend: TargetBackend | None = None,
         bundled_catalog: BundledCatalog | None = None,
         utc_clock: Callable[[], datetime] = utc_now,
         renderer: SkyChartRenderer | None = None,
     ) -> None:
         self._bundled_catalog = bundled_catalog or load_bundled_catalog()
         self._full_catalog_cache = full_catalog_cache or _EmptyFullCatalogCache()
-        self._target_resolver = target_resolver or SkyChartTargetResolver(lambda _name: None)
+        if target_resolver is None:
+            backend = target_backend or _LazySimbadBackend()
+            target_resolver = SkyChartTargetResolver(
+                lambda name: resolve_target(
+                    name,
+                    backend=backend,
+                    cache_dir=target_cache_dir,
+                )
+            )
+        self._target_resolver = target_resolver
         self._renderer = renderer or SkyChartRenderer(utc_clock=utc_clock)
 
     def render(self, request: SkyChartRequest) -> RenderedSkyChart:

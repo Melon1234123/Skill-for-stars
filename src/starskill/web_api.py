@@ -10,6 +10,7 @@ from datetime import date, datetime
 from importlib.resources import files
 import logging
 import math
+from pathlib import Path
 import re
 from threading import Event, Thread
 import time
@@ -28,11 +29,13 @@ from pydantic import BaseModel, ConfigDict, Field
 from starskill.mcp_server import StarSkillMcpService, service_from_environment
 from starskill.schemas import SkyChartRenderResponse, SkyChartRequest
 from starskill.sky_chart import RenderStore, SkyChartService
+import starskill.sky_chart_catalog as sky_chart_catalog_module
 from starskill.sky_chart_catalog import CatalogDownloadError, FullCatalogUnavailableError
 
 
 MAX_REQUEST_BODY_BYTES = 1024 * 1024
 MAX_SKY_CHART_REQUEST_BODY_BYTES = 16 * 1024
+DEFAULT_SKY_CHART_CATALOG_CACHE_DIR = Path("cache/sky-chart")
 _SKY_CHART_RENDER_PATH = "/v1/sky-chart/render"
 _RENDER_ID_RE = re.compile(r"[A-Za-z0-9_-]{32}\Z")
 _LOGGER = logging.getLogger(__name__)
@@ -64,6 +67,8 @@ class FixedWindowRateLimiter:
     def allow(self, client_host: str) -> tuple[bool, int]:
         now = self.monotonic_clock()
         window = math.floor(now / 60)
+        for stale_key in [key for key in self._requests if key[1] < window]:
+            del self._requests[stale_key]
         key = (client_host, window)
         count = self._requests.get(key, 0)
         retry_after = max(1, math.ceil((window + 1) * 60 - now))
@@ -102,6 +107,18 @@ def _load_page_html() -> str:
     except (FileNotFoundError, ModuleNotFoundError, OSError):
         _LOGGER.error("Packaged sky-chart page is unavailable")
         raise RuntimeError("Packaged sky-chart page is unavailable") from None
+
+
+async def _read_limited_body(request: Request, max_bytes: int) -> bool:
+    chunks: list[bytes] = []
+    total = 0
+    async for chunk in request.stream():
+        total += len(chunk)
+        if total > max_bytes:
+            return False
+        chunks.append(chunk)
+    request._body = b"".join(chunks)
+    return True
 
 
 def create_web_app(
@@ -165,14 +182,14 @@ def create_web_app(
         is_sky_chart_render = (
             request.method == "POST" and request.url.path == _SKY_CHART_RENDER_PATH
         )
-        if not is_sky_chart_render:
-            allowed, retry_after = limiter.allow(_client_host(request))
-            if not allowed:
-                return JSONResponse(
-                    status_code=429,
-                    content={"detail": "Too many requests"},
-                    headers={"Retry-After": str(retry_after)},
-                )
+        request_limiter = sky_limiter if is_sky_chart_render else limiter
+        allowed, retry_after = request_limiter.allow(_client_host(request))
+        if not allowed:
+            return JSONResponse(
+                status_code=429,
+                content={"detail": "Too many requests"},
+                headers={"Retry-After": str(retry_after)},
+            )
 
         body_limit = (
             MAX_SKY_CHART_REQUEST_BODY_BYTES
@@ -192,7 +209,7 @@ def create_web_app(
                     status_code=413, content={"detail": "Request body too large"}
                 )
 
-        if len(await request.body()) > body_limit:
+        if not await _read_limited_body(request, body_limit):
             return JSONResponse(
                 status_code=413, content={"detail": "Request body too large"}
             )
@@ -253,8 +270,6 @@ def create_web_app(
     async def render_sky_chart(
         request_body: SkyChartRequest, request: Request
     ) -> SkyChartRenderResponse:
-        if not sky_limiter.allow(_client_host(request))[0]:
-            raise HTTPException(status_code=429, detail="Too many requests")
         try:
             await asyncio.wait_for(render_gate.acquire(), timeout=10)
         except TimeoutError as exc:
@@ -335,8 +350,19 @@ def create_web_app(
     return app
 
 
-def default_web_app() -> FastAPI:
-    return create_web_app(service_from_environment(), SkyChartService())
+def default_web_app(
+    catalog_cache_dir: Path = DEFAULT_SKY_CHART_CATALOG_CACHE_DIR,
+) -> FastAPI:
+    service = service_from_environment()
+    full_catalog_cache = sky_chart_catalog_module.FullCatalogCache(
+        catalog_cache_dir,
+        sky_chart_catalog_module.load_hyg_source(),
+    )
+    sky_chart_service = SkyChartService(
+        full_catalog_cache=full_catalog_cache,
+        target_cache_dir=service.target_cache_dir,
+    )
+    return create_web_app(service, sky_chart_service)
 
 
 def get_health_status(url: str) -> int:
@@ -376,53 +402,64 @@ def run_web_server(
     port: int,
     open_browser: bool,
     *,
-    web_app_factory: Callable[[], FastAPI] = default_web_app,
+    catalog_cache_dir: Path = DEFAULT_SKY_CHART_CATALOG_CACHE_DIR,
+    web_app_factory: Callable[[], FastAPI] | None = None,
     browser_open: Callable[[str], bool] = webbrowser.open,
     health_get: Callable[[str], int] = get_health_status,
 ) -> None:
     if not 1024 <= port <= 65535:
         raise ValueError("port must be in 1024..65535")
 
-    app = web_app_factory()
-    config = uvicorn.Config(app, host="127.0.0.1", port=port, log_level="info")
+    app = (
+        default_web_app(catalog_cache_dir=catalog_cache_dir)
+        if web_app_factory is None
+        else web_app_factory()
+    )
+    config = uvicorn.Config(
+        app,
+        host="127.0.0.1",
+        port=port,
+        log_level="info",
+        proxy_headers=False,
+    )
     server = uvicorn.Server(config)
     base_url = f"http://127.0.0.1:{port}/"
     stop_helper = Event()
-    helper: Thread | None = None
+    health_url = f"http://127.0.0.1:{port}/healthz"
 
-    if open_browser:
-        health_url = f"http://127.0.0.1:{port}/healthz"
-
-        def open_after_health() -> None:
-            while not stop_helper.is_set():
-                if not server.started:
-                    stop_helper.wait(0.05)
-                    continue
-                try:
-                    healthy = health_get(health_url) == 200
-                except Exception:
-                    healthy = False
-                if healthy:
+    def announce_after_health() -> None:
+        while not stop_helper.is_set():
+            if not server.started:
+                stop_helper.wait(0.05)
+                continue
+            try:
+                healthy = health_get(health_url) == 200
+            except Exception:
+                healthy = False
+            if healthy:
+                opened = False
+                if open_browser:
                     try:
                         opened = browser_open(base_url)
                     except Exception:
                         opened = False
-                    if not opened:
-                        print(base_url)
-                    return
-                stop_helper.wait(0.1)
+                if not opened:
+                    print(base_url)
+                return
+            stop_helper.wait(0.1)
 
-        helper = Thread(target=open_after_health, daemon=True, name="starskill-browser")
-        helper.start()
-    else:
-        print(base_url)
+    helper = Thread(
+        target=announce_after_health,
+        daemon=True,
+        name="starskill-browser" if open_browser else "starskill-health",
+    )
+    helper.start()
 
     try:
         server.run()
     finally:
         stop_helper.set()
-        if helper is not None:
-            helper.join(timeout=1)
+        helper.join(timeout=1)
 
 
 def main(argv: Sequence[str] | None = None) -> None:

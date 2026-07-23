@@ -11,6 +11,7 @@ from starskill.schemas import (
 
 
 HUMAN_REVIEW_ITEMS = (
+    "Verify the target, date, timezone, longitude, and latitude.",
     "Check weather, cloud cover, transparency, and wind.",
     "Check buildings, trees, terrain, and local light pollution.",
     "Confirm telescope field of view, setup, and safety procedures.",

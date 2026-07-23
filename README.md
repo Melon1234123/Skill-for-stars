@@ -226,7 +226,6 @@ python -m starskill fetch-image examples/m51_sdss_image.json \
 ```
 
 完整流水线的产物契约见 `docs/day5-pipeline.md`，两个扩展案例见 `docs/day6-public-data-and-cases.md`，技能包说明见 `docs/day7-skill-package.md`，最终总结见 `docs/final-technical-report.md`。
-```
 
 ## 依赖来源与改造说明
 
