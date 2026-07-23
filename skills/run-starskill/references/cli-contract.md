@@ -1,9 +1,10 @@
 # StarSkill CLI Contract
 
-Run commands from the repository root with the active project environment:
+After following the Skill's preparation commands, run commands from the
+repository root through that virtual environment:
 
 ```text
-python -m starskill <command> ...
+.venv/bin/python -m starskill <command> ...
 ```
 
 ## Local Visual Sky Chart
@@ -11,8 +12,8 @@ python -m starskill <command> ...
 The Python-only local chart synopsis is exactly:
 
 ```text
-starskill sky-chart [-h] [--port PORT] [--open] [--download-catalog]
-                    [--catalog-cache-dir CATALOG_CACHE_DIR]
+.venv/bin/starskill sky-chart [-h] [--port PORT] [--open] [--download-catalog]
+                               [--catalog-cache-dir CATALOG_CACHE_DIR]
 ```
 
 `--port` defaults to `8000` and accepts only 1024--65535. The server hard-binds
@@ -27,7 +28,7 @@ requires that verified cache. Only the explicit human-run command below may
 contact the one fixed HYG source:
 
 ```text
-starskill sky-chart --download-catalog [--catalog-cache-dir CACHE_DIR]
+.venv/bin/starskill sky-chart --download-catalog [--catalog-cache-dir CACHE_DIR]
 ```
 
 Do not perform that download for a user. The command exits `0` and prints its
@@ -39,15 +40,14 @@ server returns cleanly; a startup failure exits `1` with
 
 A render response exposes one opaque render ID and same-origin paired PNG/JSON
 URLs. The JSON export carries `render.png_sha256` for the linked PNG bytes.
-This workflow has no Node, npm, Docker, Make, browser planetarium renderer, or
-desktop Stellarium dependency. It is loopback-only with no CORS, uploads, or
-browser location permission; it does not guarantee weather, visibility, or
-safety.
+This workflow requires only the stated Python setup and no external browser
+renderer. It is loopback-only with no CORS, uploads, or browser location
+permission; it does not guarantee weather, visibility, or safety.
 
 ## Complete Observation Bundle
 
 ```text
-python -m starskill run <task.json> --output-dir <directory> [--cache-dir <directory>] [--min-target-altitude-deg 30] [--max-sun-altitude-deg -12]
+.venv/bin/python -m starskill run <task.json> --output-dir <directory> [--cache-dir <directory>] [--min-target-altitude-deg 30] [--max-sun-altitude-deg -12]
 ```
 
 Expected bundle: `input.json`, `run.json`, `result.json`, `report.md`, `review_checklist.md`, target and ephemeris intermediates, `visibility.csv`, and a visibility PNG. Read `run.json` as the authoritative status and artifact manifest.
@@ -57,7 +57,7 @@ This command may query SIMBAD unless a validated target cache entry is available
 ## Moon-Jupiter Relationship
 
 ```text
-python -m starskill relationship <task.json> --output <relationship.csv> --metadata <relationship.json>
+.venv/bin/python -m starskill relationship <task.json> --output <relationship.csv> --metadata <relationship.json>
 ```
 
 The supported task requires `targets` to be Moon and Jupiter. It uses Astropy's built-in solar-system ephemeris and does not require a live network query.
@@ -65,7 +65,7 @@ The supported task requires `targets` to be Moon and Jupiter. It uses Astropy's 
 ## SDSS M51 Image
 
 ```text
-python -m starskill fetch-image <request.json> --output-dir <directory> [--cache-dir <directory>]
+.venv/bin/python -m starskill fetch-image <request.json> --output-dir <directory> [--cache-dir <directory>]
 ```
 
 Expected files: `data/m51_sdss.jpg`, `figures/m51_display.png`, and `image_metadata.json`. The command may query the SDSS DR18 image cutout endpoint. It enforces a request timeout, byte limit, MIME/JPEG validation, dimensions, and a validated cache.
@@ -73,10 +73,10 @@ Expected files: `data/m51_sdss.jpg`, `figures/m51_display.png`, and `image_metad
 ## Partial Commands
 
 ```text
-python -m starskill validate <task.json>
-python -m starskill resolve <target> [--cache-dir <directory>] [--output <target.json>]
-python -m starskill ephemeris <task.json> --target-file <target.json> --output <ephemeris.csv> --metadata <ephemeris.json>
-python -m starskill plan <ephemeris.json> --output <visibility.csv> --metadata <result.json> --figure <plot.png> [threshold options]
+.venv/bin/python -m starskill validate <task.json>
+.venv/bin/python -m starskill resolve <target> [--cache-dir <directory>] [--output <target.json>]
+.venv/bin/python -m starskill ephemeris <task.json> --target-file <target.json> --output <ephemeris.csv> --metadata <ephemeris.json>
+.venv/bin/python -m starskill plan <ephemeris.json> --output <visibility.csv> --metadata <result.json> --figure <plot.png> [threshold options]
 ```
 
 ## Exit Codes

@@ -36,7 +36,7 @@ Run the selected command and capture its exit code and structured stdout or stde
 
 Do not substitute fabricated coordinates, images, source metadata, or success reports when a service fails. A cache hit is acceptable only when the CLI validates the cached record.
 
-For a local visual chart, run `starskill sky-chart --open` after prerequisites are installed, or report the manual loopback URL when the user does not want a browser opened. Do not run a full-catalog download on the user's behalf: require the human user to run `starskill sky-chart --download-catalog` themselves when they want full density. Keep the ordinary chart offline; that explicit download is the only chart operation that accesses the fixed, verified HYG source.
+For a local visual chart, run `.venv/bin/starskill sky-chart --open` after prerequisites are installed, or report the manual loopback URL when the user does not want a browser opened. Do not run a full-catalog download on the user's behalf: require the human user to run `.venv/bin/starskill sky-chart --download-catalog` themselves when they want full density. Keep the ordinary chart offline; that explicit download is the only chart operation that accesses the fixed, verified HYG source.
 
 ## Verify the Result
 

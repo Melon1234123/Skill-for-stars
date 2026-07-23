@@ -21,14 +21,36 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_readme_documents_python_only_sky_chart() -> None:
-    text = (PROJECT_ROOT / "README.md").read_text(encoding="utf-8").lower()
+    runtime_documents = {
+        "README": PROJECT_ROOT / "README.md",
+        "Skill": PROJECT_ROOT / "skills" / "run-starskill" / "SKILL.md",
+        "CLI reference": PROJECT_ROOT
+        / "skills"
+        / "run-starskill"
+        / "references"
+        / "cli-contract.md",
+    }
+    document_text = {
+        name: path.read_text(encoding="utf-8").lower()
+        for name, path in runtime_documents.items()
+    }
+    text = document_text["README"]
 
     assert 'pip install -e ".[dev]"' in text
     assert "starskill sky-chart --open" in text
-    assert "node --version" not in text
-    assert "npm --prefix web" not in text
-    assert "make -c web" not in text
-    assert "docker version" not in text
+    assert ".venv/bin/starskill sky-chart --open" in document_text["Skill"]
+    for name, value in document_text.items():
+        for legacy_dependency in (
+            r"\bnode(?:\.js)?\b",
+            r"\bnpm\b",
+            r"\bdocker\b",
+            r"\bmake\b",
+            r"web/dist",
+            r"stellarium web engine",
+        ):
+            assert re.search(legacy_dependency, value) is None, (
+                f"{name} contains legacy browser dependency {legacy_dependency!r}"
+            )
 
 
 def source_checkout_environment() -> dict[str, str]:
