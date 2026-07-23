@@ -1,6 +1,6 @@
 ---
 name: run-starskill
-description: Run and inspect reproducible StarSkill astronomy workflows. Use for complete observation bundles, Moon-Jupiter relationship calculations, bounded SDSS M51 image retrieval, or individual target-resolution, ephemeris, and planning steps.
+description: Run and inspect reproducible StarSkill astronomy workflows. Use for complete observation bundles, Moon-Jupiter relationship calculations, bounded SDSS M51 image retrieval, individual target-resolution, ephemeris, planning steps, or a local visual sky chart.
 ---
 
 # Run StarSkill
@@ -12,6 +12,7 @@ Use the repository CLI to produce traceable astronomy-training artifacts. Preser
 - Use `run` for a complete single-target observation bundle such as the Beijing M42 case.
 - Use `relationship` for the supported Moon-Jupiter positional relationship case.
 - Use `fetch-image` for the bounded SDSS DR18 M51 cutout workflow.
+- Use `sky-chart` only when the user requests a local visual sky chart.
 - Use `validate`, `resolve`, `ephemeris`, or `plan` when the user explicitly requests only that stage.
 
 Read [references/cli-contract.md](references/cli-contract.md) before running a command. Follow its exact arguments, artifacts, exit codes, and network boundaries.
@@ -19,7 +20,13 @@ Read [references/cli-contract.md](references/cli-contract.md) before running a c
 ## Prepare
 
 1. Locate the repository root containing `pyproject.toml`, `examples/`, and `src/starskill`.
-2. Use the repository virtual environment when present. Otherwise require Python 3.11+ and install the project with its declared dependencies.
+2. Use the repository virtual environment when present. Otherwise tell the user to use Python 3.11+, create one, and install the declared dependencies before a Python command is required:
+
+   ```bash
+   python3 -m venv .venv
+   .venv/bin/python -m pip install -e ".[dev]"
+   ```
+
 3. Reuse the matching example JSON when the requested case matches it. For new observation inputs, validate the JSON before any network query.
 4. Choose a new output directory unless the user explicitly asks to replace an existing run.
 
@@ -29,6 +36,8 @@ Run the selected command and capture its exit code and structured stdout or stde
 
 Do not substitute fabricated coordinates, images, source metadata, or success reports when a service fails. A cache hit is acceptable only when the CLI validates the cached record.
 
+For a local visual chart, run `starskill sky-chart --open` after prerequisites are installed, or report the manual loopback URL when the user does not want a browser opened. Do not run a full-catalog download on the user's behalf: require the human user to run `starskill sky-chart --download-catalog` themselves when they want full density. Keep the ordinary chart offline; that explicit download is the only chart operation that accesses the fixed, verified HYG source.
+
 ## Verify the Result
 
 1. Require exit code `0` for success. Treat exit code `5` as a degraded run, not full success.
@@ -36,6 +45,7 @@ Do not substitute fabricated coordinates, images, source metadata, or success re
 3. For a complete run, inspect `run.json`, confirm its status, review issues, and verify the listed artifact hashes when integrity matters.
 4. For public imagery, inspect `image_metadata.json` for source URL, dimensions, byte count, SHA-256, processing steps, and attribution.
 5. Summarize computed facts separately from rule-based conclusions and human-review items.
+6. For `sky-chart`, report the opaque render ID, catalog mode and status, paired PNG/JSON export URLs, the JSON's PNG SHA-256, warnings such as `catalog_degraded`, and remaining human/scientific checks. State that it does not establish weather, visibility, site safety, or live light pollution.
 
 ## Evaluation Replay
 

@@ -20,6 +20,17 @@ from tests.fixtures.m42 import write_m42_ephemeris, write_m42_target
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 
+def test_readme_documents_python_only_sky_chart() -> None:
+    text = (PROJECT_ROOT / "README.md").read_text(encoding="utf-8").lower()
+
+    assert 'pip install -e ".[dev]"' in text
+    assert "starskill sky-chart --open" in text
+    assert "node --version" not in text
+    assert "npm --prefix web" not in text
+    assert "make -c web" not in text
+    assert "docker version" not in text
+
+
 def source_checkout_environment() -> dict[str, str]:
     """Make the source package importable to the real child CLI process."""
     environment = os.environ.copy()

@@ -6,6 +6,44 @@ Run commands from the repository root with the active project environment:
 python -m starskill <command> ...
 ```
 
+## Local Visual Sky Chart
+
+The Python-only local chart synopsis is exactly:
+
+```text
+starskill sky-chart [-h] [--port PORT] [--open] [--download-catalog]
+                    [--catalog-cache-dir CATALOG_CACHE_DIR]
+```
+
+`--port` defaults to `8000` and accepts only 1024--65535. The server hard-binds
+to `127.0.0.1`; use `http://127.0.0.1:8000/` manually, or use `--open` to open
+that loopback URL after health is available. `--catalog-cache-dir` defaults to
+`cache/sky-chart`.
+
+Catalog modes in render requests are `auto`, `bundled`, and `full`. `auto`
+uses a validated local HYG v4.1 cache when present and otherwise returns the
+bundled catalog with degraded status; `bundled` always stays packaged; `full`
+requires that verified cache. Only the explicit human-run command below may
+contact the one fixed HYG source:
+
+```text
+starskill sky-chart --download-catalog [--catalog-cache-dir CACHE_DIR]
+```
+
+Do not perform that download for a user. The command exits `0` and prints its
+catalog summary on successful verified publication, exits `1` with
+`catalog_download_failed` for a download/cache failure, and exits `2` for CLI
+syntax or port validation errors. Normal server startup exits `0` only when the
+server returns cleanly; a startup failure exits `1` with
+`web_server_start_failed`.
+
+A render response exposes one opaque render ID and same-origin paired PNG/JSON
+URLs. The JSON export carries `render.png_sha256` for the linked PNG bytes.
+This workflow has no Node, npm, Docker, Make, browser planetarium renderer, or
+desktop Stellarium dependency. It is loopback-only with no CORS, uploads, or
+browser location permission; it does not guarantee weather, visibility, or
+safety.
+
 ## Complete Observation Bundle
 
 ```text

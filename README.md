@@ -373,25 +373,11 @@ python -m starskill fetch-image examples/m51_sdss_image.json \
 
 评审重点不是技能数量，而是每个任务是否从输入到输出形成稳定闭环。本项目的三类任务分别覆盖观测计划、科普表达和公开数据展示，均保留关键中间结果，便于复现和判断可靠性。
 
-## 本机浏览器服务配置契约
+## 本机 Python 星图
 
-本节是公开的未来浏览器服务配置契约。当前仓库尚未包含 `web/` 工程、
-Stellarium Web Engine 或浏览器客户端，因此**不得在当前提交执行**下面的 Web
-构建、启动或验收命令，也不得声称已构建或运行。Browser Task 5 完成后在全新克隆
-中执行此验收流程；Browser Task 6 可以替换或扩展客户端，但必须重新验证本节的
-启动与降级行为。
-
-### 前置条件
-
-安装并可在命令行使用以下运行时：Python 3.11 或更高版本、Node.js 与 npm，以及
-Docker CLI。Docker daemon 也必须正在运行，供 `make -C web engine` 构建
-Stellarium Web Engine；仅安装 Docker 而 daemon 未启动不满足前置条件。公开克隆
-地址为 `https://github.com/Melon1234123/Skill-for-stars.git`。
-
-### Browser Task 5 后的全新克隆验收
-
-下列命令是 Browser Task 5 完成后才执行的 macOS/Linux 全新克隆流程。它不复制
-缓存、`runs/`、`.env`、Black Marble 快照或 Stellarium 配置到克隆目录：
+`sky-chart` 是本机可视化星图工作流，要求 Python 3.11 或更高版本。下面是可直接
+复制的 macOS/Linux 全新克隆流程；它不复制缓存、`runs/`、`.env` 或任何可选的
+outreach 配置：
 
 ```bash
 starskill_clone_dir=$(mktemp -d)
@@ -399,37 +385,52 @@ git clone https://github.com/Melon1234123/Skill-for-stars.git "$starskill_clone_
 cd "$starskill_clone_dir"
 
 python3 --version
-node --version
-npm --version
-docker version
-docker info >/dev/null
-
 python3 -m venv .venv
 .venv/bin/python -m pip install -e ".[dev]"
-npm --prefix web install
-make -C web engine
-npm --prefix web run build
-starskill-web
+.venv/bin/starskill sky-chart --open
 ```
 
-`starskill-web` serves only the loopback origin. After it starts, verify the
-documented Uvicorn-default port and the browser entry page in a second shell:
+默认服务只监听回环地址 `127.0.0.1` 的端口 `8000`。`--open` 会在健康检查通过后
+打开本机浏览器；不使用该选项时，手动访问 `http://127.0.0.1:8000/`。可用
+`--port 8000` 显式指定端口（有效范围为 1024--65535），并在另一终端确认：
 
 ```bash
 curl -fsS http://127.0.0.1:8000/healthz
-open http://127.0.0.1:8000/
 ```
 
-The health response must be `{"status":"ok"}` and `/` must serve the browser
-entry page. On platforms without `open`, use a browser to visit the same URL.
-Stop and report the missing prerequisite or failed command rather than treating
-an incomplete engine build or unavailable browser assets as a successful start.
+响应 `{"status":"ok"}` 表示本机服务可用。
+
+### 星表与导出
+
+页面可选择 `auto`、`bundled` 或 `full` 星表模式。`bundled` 始终使用随包亮星表；
+`auto` 在本机存在已验证的完整星表时使用它，否则退化为随包亮星表并报告
+`degraded`；`full` 只接受已验证的本地完整星表。默认缓存目录为
+`cache/sky-chart`。
+
+只有下列用户显式执行的下载操作可以访问固定且已验证的 HYG 4.1 数据源；普通启动、
+渲染和导出均不访问该数据源。下载完成后才可使用完整密度星表：
+
+```bash
+.venv/bin/starskill sky-chart --download-catalog
+```
+
+每次渲染都会返回一个不透明的 render ID，并给出由该 ID 关联的同源 PNG 与 JSON
+导出地址。JSON 中的 `render.png_sha256` 是对应 PNG 字节的 SHA-256，可用于核对
+导出的配对关系和完整性。
+
+### 边界与隐私
+
+本机页面不会上传数据，不请求浏览器定位或其他浏览器权限；服务仅监听回环地址且不
+启用 CORS。它是基于输入时间和地点的星图，不模拟 Stellarium，不保证实际天气、
+可见性或观测安全，也不使用实时光污染数据。请由人类核对天气、云量、地平线遮挡、
+设备和现场安全。
 
 ### Optional outreach enhancements
 
-No API key, Black Marble snapshot, cache, or desktop Stellarium installation is
-required for the core local star map, geometry, or weather workflows. The
-following environment variables enhance only their named panels or bridge:
+No API key, Black Marble snapshot, or desktop Stellarium installation is
+required for `sky-chart`. The following environment variables enhance only
+existing optional outreach or MCP routes; they are not prerequisites for the
+local visual sky chart:
 
 | Variable | Optional effect when configured | Behavior when absent |
 | --- | --- | --- |
@@ -453,7 +454,7 @@ fi
 
 ## 后续工程化方向
 
-- `starskill-web` 仅监听本机回环地址 `127.0.0.1`，不启用 CORS；浏览器仅调用同源 API，绝不接触 NASA 凭据、服务端缓存路径或桌面程序 URL。
+- 本机服务仅监听回环地址 `127.0.0.1`，不启用 CORS；浏览器仅调用同源 API，绝不接触 NASA 凭据、服务端缓存路径或桌面程序 URL。
 - Web API 对请求体和单客户端请求频率设限，服务端运行元数据与资源路径不会返回给浏览器。
 - 将命令行入口进一步封装为 MCP server，使智能体可通过标准工具协议调用。
 - 将输入模型导出为独立 JSON Schema，便于其他工具在调用前校验。
