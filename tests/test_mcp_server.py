@@ -339,3 +339,16 @@ def test_mcp_server_reads_the_optional_local_stellarium_url(monkeypatch) -> None
     bridge = service_from_environment().stellarium_bridge_factory()
 
     assert bridge._base_url == "http://localhost:8090"
+
+
+def test_mcp_server_keeps_the_default_loopback_bridge_without_environment(
+    monkeypatch,
+) -> None:
+    from starskill.mcp_server import service_from_environment
+    from starskill.stellarium_bridge import DEFAULT_BASE_URL
+
+    monkeypatch.delenv("STARSKILL_STELLARIUM_BASE_URL", raising=False)
+    service = service_from_environment()
+
+    assert service.stellarium_bridge_factory()._base_url == DEFAULT_BASE_URL
+    assert service.validate_observation_task(load_observation_payload())["ok"] is True

@@ -67,8 +67,11 @@ STARSKILL_STELLARIUM_BASE_URL = "http://127.0.0.1:8090"
 `STARSKILL_LIGHT_POLLUTION_SNAPSHOT` selects a versioned local Black Marble
 snapshot. If it is missing or invalid, the light-pollution result is explicitly
 unavailable and never substitutes a live measurement. `STARSKILL_STELLARIUM_BASE_URL`
-is for an optional local desktop RemoteControl bridge; absent desktop
-configuration must not block the rest of the server.
+is an optional loopback override for the local desktop RemoteControl bridge.
+When it is not set, `sync_stellarium` uses
+`http://127.0.0.1:8090`. If desktop Stellarium is absent or unreachable, that
+tool returns the structured result `ok: false, error: connection_error`; the
+failure does not block the rest of the server.
 
 To enable NASA APOD, configure `STARSKILL_NASA_API_KEY` only in the local
 server process environment. It is used solely to configure the NASA provider;

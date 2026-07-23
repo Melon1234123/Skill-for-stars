@@ -435,7 +435,7 @@ following environment variables enhance only their named panels or bridge:
 | --- | --- | --- |
 | `STARSKILL_NASA_API_KEY` | Allows the NASA APOD provider to request its optional feature. Keep the key in the local process environment only. | The NASA panel is explicitly `unavailable`; the provider makes no request without a key. |
 | `STARSKILL_LIGHT_POLLUTION_SNAPSHOT` | Points to a local, versioned NASA Black Marble snapshot. | The light-pollution panel is explicitly `unavailable`; it does not claim a live measurement. |
-| `STARSKILL_STELLARIUM_BASE_URL` | Configures the optional local desktop Stellarium RemoteControl bridge. | Desktop synchronization is unavailable; it is not needed by the browser star map. |
+| `STARSKILL_STELLARIUM_BASE_URL` | Optionally overrides the local loopback desktop Stellarium RemoteControl origin. | `sync_stellarium` keeps its default `http://127.0.0.1:8090`; if the desktop service is absent or unreachable, it returns structured `ok: false, error: connection_error` without blocking core workflows. |
 
 The following APOD check is deliberately opt-in and is not part of the offline
 test suite or the fresh-clone acceptance procedure. Run it only after setting a
