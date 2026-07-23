@@ -40,7 +40,7 @@ Browser Web App
   `- HTTP API client
           |
           v
-Authenticated StarSkill Web API
+Loopback StarSkill Web App
   |- Astronomy domain functions (existing Astropy workflow)
   |- Weather provider adapter
   |- Light-pollution provider adapter
@@ -53,9 +53,10 @@ Local stdio MCP server
   `- same domain functions and provider adapters
 ```
 
-Web API 和 MCP 服务共享领域模型、来源记录、缓存策略和建议生成器；它们只在
-传输层和鉴权方式上不同。现有 `starskill-mcp` 保持 `stdio`，不得直接作为
-公网 HTTP 服务运行。
+Web App 和 MCP 服务共享领域模型、来源记录、缓存策略和建议生成器；它们只在
+传输层上不同。`starskill-web` 同时托管构建后的浏览器文件和同源 `/v1` API，且
+硬性绑定 `127.0.0.1`；现有 `starskill-mcp` 保持 `stdio`。二者都不得作为公网
+服务运行。
 
 ## 4. 浏览器体验
 
@@ -142,9 +143,10 @@ MCP 输出和 Web API 响应都必须使用同一个版本化结果模型。每�
 错误、无数据和陈旧缓存。运行产物记录实际使用的是新鲜数据、已验证缓存还是降级
 状态。
 
-Web API 必须具备鉴权、允许来源限制、请求体限制、速率限制和不包含密钥的结构化
-日志。浏览器只能调用 Web API，不能读取服务器缓存目录或向 Stellarium 桥接传入
-任意 URL。
+Web App 必须硬性绑定回环地址、拒绝非同源跨域访问、限制请求体和请求速率，并写入
+不包含密钥的结构化日志。浏览器只能调用同源 Web API，不能读取服务器缓存目录或向
+Stellarium 桥接传入任意 URL。README 必须给出从克隆、安装依赖、构建星图、启动
+本地服务到配置可选 NASA Key/光害快照的完整步骤。
 
 ## 8. 测试与验收
 
@@ -155,7 +157,7 @@ Web API 必须具备鉴权、允许来源限制、请求体限制、速率限制
 3. 为 Stellarium 桥接建立本地 HTTP 假服务，验证只接受默认回环地址、请求参数
    正确且失败不会中断推荐。
 4. 为 MCP 新工具验证工具发现、输入校验、运行资源白名单和结构化降级输出。
-5. 为 Web API 验证鉴权、速率/请求限制、CORS、错误响应和与 MCP 的结果模型一致。
+5. 为 Web App 验证回环绑定、同源限制、速率/请求限制、错误响应和与 MCP 的结果模型一致。
 6. 用 Playwright 对浏览器星图进行桌面截图与交互验证：WebGL 画布非空、地点/时间
    改变后画面和建议同步、错误状态可见、文字不重叠。
 7. 最终验收运行完整既有测试、新增测试、MCP stdio 发现测试和一次受控的端到端
