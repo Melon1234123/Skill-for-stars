@@ -115,7 +115,7 @@ def read_cache_record(
             return None
         if now.tzinfo is None or now.utcoffset() is None:
             return None
-        if not isinstance(payload, dict) or now - cached_at > ttl:
+        if not isinstance(payload, dict) or now - cached_at >= ttl:
             return None
     except (KeyError, OSError, TypeError, UnicodeDecodeError, ValueError, json.JSONDecodeError):
         return None

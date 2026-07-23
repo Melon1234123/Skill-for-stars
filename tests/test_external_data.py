@@ -42,6 +42,7 @@ def test_cache_expires_without_returning_stale_payload(tmp_path: Path) -> None:
     write_cache_record(path, payload, now)
 
     assert read_cache_record(path, now + timedelta(minutes=29), timedelta(minutes=30)) == payload
+    assert read_cache_record(path, now + timedelta(minutes=30), timedelta(minutes=30)) is None
     assert read_cache_record(path, now + timedelta(minutes=31), timedelta(minutes=30)) is None
 
 
