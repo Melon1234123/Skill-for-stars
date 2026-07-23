@@ -7,13 +7,14 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from hashlib import sha256
 from importlib import metadata as importlib_metadata
-from io import BytesIO
 import math
 import platform
 import re
 import secrets
+import struct
 import threading
 import warnings
+import zlib
 from typing import Callable, Iterator, Protocol, Sequence
 
 from astropy import units as u
@@ -30,9 +31,8 @@ import astropy
 import matplotlib
 from matplotlib.backends.backend_agg import FigureCanvasAgg
 from matplotlib.figure import Figure
-from matplotlib.patches import Circle
+from matplotlib.patches import Circle, Wedge
 import numpy as np
-from PIL import Image
 
 from starskill.schemas import (
     SkyChartAltAzCoordinates,
@@ -149,7 +149,7 @@ class RenderedSkyChart:
     metadata: SkyChartExportMetadata
     catalog_mode_used: str
     catalog_status: str
-    metadata_json_bytes: bytes | None = None
+    metadata_json_bytes: bytes
 
 
 @dataclass(frozen=True)
@@ -166,11 +166,11 @@ class _StoreRecord:
     expires_at: float
     insertion_order: int
     png_bytes: bytes
-    metadata_json_bytes: bytes | None
+    metadata_json_bytes: bytes
 
     @property
     def byte_size(self) -> int:
-        return len(self.png_bytes) + len(self.metadata_json_bytes or b"")
+        return len(self.png_bytes) + len(self.metadata_json_bytes)
 
 
 class SkyChartRenderer:
@@ -235,25 +235,28 @@ class SkyChartRenderer:
                 dpi=CANVAS_DPI,
                 facecolor="#000000",
             )
-            FigureCanvasAgg(figure)
-            axes = figure.add_axes((0.12, 0.11, 0.76, 0.84), facecolor="#000000")
-            axes.set_xlim(-1.05, 1.05)
-            axes.set_ylim(-1.05, 1.05)
-            axes.set_aspect("equal")
-            axes.axis("off")
+            try:
+                FigureCanvasAgg(figure)
+                axes = figure.add_axes((0.12, 0.11, 0.76, 0.84), facecolor="#000000")
+                axes.set_xlim(-1.05, 1.05)
+                axes.set_ylim(-1.05, 1.05)
+                axes.set_aspect("equal")
+                axes.axis("off")
 
-            self._draw_background(axes)
-            self._draw_horizon_grid(axes)
-            segments_drawn = self._draw_constellations(
-                axes, selection.constellation_segments, constellation_altaz
-            )
-            stars_drawn = self._draw_stars(axes, selection.catalog.stars, star_altaz)
-            self._draw_moon(axes, moon)
-            self._draw_planets(axes, planets, planet_records)
-            self._draw_target(axes, target)
-            self._draw_footer(figure, request, context, selection)
+                self._draw_background(axes)
+                self._draw_horizon_grid(axes)
+                segments_drawn = self._draw_constellations(
+                    axes, selection.constellation_segments, constellation_altaz
+                )
+                stars_drawn = self._draw_stars(axes, selection.catalog.stars, star_altaz)
+                self._draw_moon(axes, moon)
+                self._draw_planets(axes, planets, planet_records)
+                self._draw_target(axes, target)
+                self._draw_footer(figure, request, context, selection)
 
-            png_bytes = self._save_rgb_png(figure)
+                png_bytes = self._save_rgb_png(figure)
+            finally:
+                figure.clear()
             png_digest = sha256(png_bytes).hexdigest()
 
         metadata = SkyChartExportMetadata(
@@ -302,6 +305,7 @@ class SkyChartRenderer:
             metadata=metadata,
             catalog_mode_used=selection.mode_used,
             catalog_status=selection.status,
+            metadata_json_bytes=_serialize_metadata(metadata),
         )
 
     @staticmethod
@@ -484,12 +488,35 @@ class SkyChartRenderer:
 
     @staticmethod
     def _draw_moon(axes, moon: SkyChartObject) -> None:
-        if not moon.drawn:
+        if not moon.drawn or moon.altaz.altitude_deg < 0:
             return
         x, y = project_altaz(moon.altaz.altitude_deg, moon.altaz.azimuth_deg)
         illumination = moon.illumination_fraction or 0.0
-        shade = int(70 + 185 * illumination)
-        axes.scatter([x], [y], s=145, c=[f"#{shade:02x}{shade:02x}{shade:02x}"], edgecolors="#f1ead4", linewidths=0.8, zorder=4)
+        radius = 0.022
+        axes.add_patch(
+            Circle((x, y), radius, facecolor="#252830", edgecolor="none", zorder=4)
+        )
+        axes.add_patch(
+            Wedge(
+                (x, y),
+                radius,
+                theta1=90,
+                theta2=90 + 360 * illumination,
+                facecolor="#f2ead2",
+                edgecolor="none",
+                zorder=4.1,
+            )
+        )
+        axes.add_patch(
+            Circle(
+                (x, y),
+                radius,
+                fill=False,
+                edgecolor="#f1ead4",
+                linewidth=0.8,
+                zorder=4.2,
+            )
+        )
         axes.text(x + 0.025, y + 0.025, moon.label, color="#e8e1ca", fontsize=7, zorder=4)
 
     @staticmethod
@@ -522,29 +549,20 @@ class SkyChartRenderer:
 
     @staticmethod
     def _save_rgb_png(figure: Figure) -> bytes:
-        raw = BytesIO()
         with warnings.catch_warnings():
             warnings.filterwarnings(
                 "ignore",
                 message=r"Glyph .* missing from font\(s\) DejaVu Sans\.",
                 category=UserWarning,
             )
-            figure.savefig(
-                raw,
-                format="png",
-                dpi=CANVAS_DPI,
-                facecolor="#000000",
-                edgecolor="#000000",
-                transparent=False,
-                metadata={},
-            )
-        figure.clear()
-        raw.seek(0)
-        with Image.open(raw) as image:
-            rgb = image.convert("RGB")
-            output = BytesIO()
-            rgb.save(output, format="PNG", optimize=False, compress_level=6)
-        return output.getvalue()
+            canvas = figure.canvas
+            canvas.draw()
+        rgba = np.asarray(canvas.buffer_rgba(), dtype=np.uint8)
+        height, width, channels = rgba.shape
+        if channels != 4:
+            raise ValueError("Agg canvas did not provide RGBA pixels")
+        rgb_bytes = np.ascontiguousarray(rgba[:, :, :3]).tobytes()
+        return _encode_rgb_png(rgb_bytes, width=width, height=height)
 
     @staticmethod
     def _target_input(request: SkyChartRequest) -> str:
@@ -602,6 +620,7 @@ class SkyChartService:
             metadata=metadata,
             catalog_mode_used=chart.catalog_mode_used,
             catalog_status=chart.catalog_status,
+            metadata_json_bytes=_serialize_metadata(metadata),
         )
 
 
@@ -631,12 +650,11 @@ class RenderStore:
         with self._lock:
             now = self._monotonic_clock()
             self._purge_expired(now)
+            if chart.metadata.render.png_sha256 != sha256(chart.png_bytes).hexdigest():
+                raise ValueError("render metadata does not match PNG bytes")
             render_id = self._new_render_id()
             metadata = chart.metadata.model_copy(update={"render_id": render_id})
-            metadata_json = metadata.model_dump_json(
-                exclude_none=False,
-                by_alias=True,
-            ).encode("utf-8")
+            metadata_json = _serialize_metadata(metadata)
             self._put_record(render_id, now, chart.png_bytes, metadata_json)
             return render_id
 
@@ -649,13 +667,6 @@ class RenderStore:
             record = self._records.get(render_id)
             if record is None:
                 return None
-            if record.metadata_json_bytes is None:
-                return RenderedSkyChart(
-                    png_bytes=record.png_bytes,
-                    metadata=None,  # type: ignore[arg-type]
-                    catalog_mode_used="bundled",
-                    catalog_status="available",
-                )
             metadata = SkyChartExportMetadata.model_validate_json(
                 record.metadata_json_bytes
             )
@@ -672,23 +683,14 @@ class RenderStore:
             self._records.clear()
             self._total_bytes = 0
 
-    def put_bytes_for_test(self, png_bytes: bytes) -> str:
-        """Exercise production TTL/eviction mechanics without large chart fixtures."""
-        with self._lock:
-            now = self._monotonic_clock()
-            self._purge_expired(now)
-            render_id = self._new_render_id()
-            self._put_record(render_id, now, bytes(png_bytes), None)
-            return render_id
-
     def _put_record(
         self,
         render_id: str,
         now: float,
         png_bytes: bytes,
-        metadata_json_bytes: bytes | None,
+        metadata_json_bytes: bytes,
     ) -> None:
-        byte_size = len(png_bytes) + len(metadata_json_bytes or b"")
+        byte_size = len(png_bytes) + len(metadata_json_bytes)
         if byte_size > self.max_bytes:
             raise ValueError("render exceeds the store byte capacity")
         while self._records and (
@@ -737,3 +739,40 @@ def _dependency_version(distribution: str) -> str:
         return importlib_metadata.version(distribution)
     except importlib_metadata.PackageNotFoundError:
         return "system"
+
+
+def _serialize_metadata(metadata: SkyChartExportMetadata) -> bytes:
+    return metadata.model_dump_json(
+        exclude_none=False,
+        by_alias=True,
+    ).encode("utf-8")
+
+
+def _png_chunk(chunk_type: bytes, data: bytes) -> bytes:
+    checksum = zlib.crc32(chunk_type)
+    checksum = zlib.crc32(data, checksum) & 0xFFFFFFFF
+    return struct.pack(">I", len(data)) + chunk_type + data + struct.pack(">I", checksum)
+
+
+def _encode_rgb_png(rgb_bytes: bytes, *, width: int, height: int) -> bytes:
+    row_size = width * 3
+    if len(rgb_bytes) != row_size * height:
+        raise ValueError("RGB pixel buffer has an unexpected size")
+
+    scanlines = bytearray((row_size + 1) * height)
+    for row in range(height):
+        source_start = row * row_size
+        target_start = row * (row_size + 1)
+        scanlines[target_start + 1 : target_start + row_size + 1] = rgb_bytes[
+            source_start : source_start + row_size
+        ]
+
+    header = struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0)
+    return b"".join(
+        (
+            b"\x89PNG\r\n\x1a\n",
+            _png_chunk(b"IHDR", header),
+            _png_chunk(b"IDAT", zlib.compress(scanlines, level=6)),
+            _png_chunk(b"IEND", b""),
+        )
+    )

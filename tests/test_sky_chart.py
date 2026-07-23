@@ -7,12 +7,16 @@ import json
 import re
 
 from PIL import Image, ImageChops
+from matplotlib.backends.backend_agg import FigureCanvasAgg
+from matplotlib.figure import Figure
+from matplotlib.patches import Circle, Wedge
 import pytest
 
 import starskill.sky_chart as sky_chart_module
 from starskill.schemas import SkyChartExportMetadata, SkyChartRequest
 from starskill.sky_chart import (
     RenderStore,
+    RenderedSkyChart,
     SkyChartRenderer,
     SkyChartService,
     sort_stars_dim_to_bright,
@@ -82,6 +86,35 @@ def fixed_chart(service: SkyChartService):
     return service.render(FIXED_REQUEST)
 
 
+def chart_with_png_bytes(template: RenderedSkyChart, png_bytes: bytes) -> RenderedSkyChart:
+    metadata = template.metadata.model_copy(
+        update={
+            "render": template.metadata.render.model_copy(
+                update={"png_sha256": sha256(png_bytes).hexdigest()}
+            )
+        }
+    )
+    return RenderedSkyChart(
+        png_bytes=png_bytes,
+        metadata=metadata,
+        catalog_mode_used=template.catalog_mode_used,
+        catalog_status=template.catalog_status,
+        metadata_json_bytes=metadata.model_dump_json(
+            exclude_none=False,
+            by_alias=True,
+        ).encode("utf-8"),
+    )
+
+
+def stored_byte_size(chart: RenderedSkyChart) -> int:
+    metadata = chart.metadata.model_copy(update={"render_id": "A" * 32})
+    metadata_json = metadata.model_dump_json(
+        exclude_none=False,
+        by_alias=True,
+    ).encode("utf-8")
+    return len(chart.png_bytes) + len(metadata_json)
+
+
 def test_render_has_expected_layer_order_and_linked_png_digest(fixed_chart) -> None:
     assert fixed_chart.png_bytes.startswith(b"\x89PNG\r\n\x1a\n")
     assert fixed_chart.metadata.render.layer_order == [
@@ -109,6 +142,12 @@ def test_png_is_exact_rgb_canvas_and_nonblank(fixed_chart) -> None:
     assert ImageChops.difference(image, Image.new("RGB", image.size)).getbbox()
 
 
+def test_fixed_render_png_bytes_are_deterministic(service, fixed_chart) -> None:
+    repeated = service.render(FIXED_REQUEST)
+    assert repeated.png_bytes == fixed_chart.png_bytes
+    assert repeated.metadata.render.png_sha256 == fixed_chart.metadata.render.png_sha256
+
+
 def test_invisible_object_is_recorded_but_not_drawn(fixed_chart) -> None:
     objects = [fixed_chart.metadata.objects.moon, *fixed_chart.metadata.objects.planets]
     assert all(item.drawn is item.visible for item in objects)
@@ -131,6 +170,76 @@ def test_moon_and_seven_planets_have_complete_metadata(fixed_chart) -> None:
     ]
     assert all(planet.icrs is not None for planet in fixed_chart.metadata.objects.planets)
     assert all("sun" not in planet.label.casefold() for planet in fixed_chart.metadata.objects.planets)
+
+
+def test_moon_patch_coverage_tracks_illumination_and_stays_below_horizon_hidden(
+    fixed_chart,
+) -> None:
+    figure = Figure()
+    FigureCanvasAgg(figure)
+    axes = figure.add_subplot()
+    visible_moon = fixed_chart.metadata.objects.moon.model_copy(
+        update={
+            "altaz": fixed_chart.metadata.objects.moon.altaz.model_copy(
+                update={"altitude_deg": 45.0, "azimuth_deg": 180.0}
+            ),
+            "visible": True,
+            "drawn": True,
+            "illumination_fraction": 0.25,
+        }
+    )
+    try:
+        SkyChartRenderer._draw_moon(axes, visible_moon)
+        assert [type(patch) for patch in axes.patches] == [Circle, Wedge, Circle]
+        illuminated = axes.patches[1]
+        assert isinstance(illuminated, Wedge)
+        assert illuminated.theta2 - illuminated.theta1 == pytest.approx(90.0)
+
+        hidden_moon = visible_moon.model_copy(
+            update={
+                "altaz": visible_moon.altaz.model_copy(
+                    update={"altitude_deg": -1.0}
+                ),
+                "visible": False,
+                "drawn": True,
+                "illumination_fraction": 0.75,
+            }
+        )
+        SkyChartRenderer._draw_moon(axes, hidden_moon)
+        assert len(axes.patches) == 3
+        assert len(axes.texts) == 1
+    finally:
+        figure.clear()
+
+
+def test_renderer_clears_figure_when_png_encoding_fails(monkeypatch) -> None:
+    cleared_figures = []
+    original_clear = Figure.clear
+
+    def tracked_clear(figure, *args, **kwargs):
+        cleared_figures.append(figure)
+        return original_clear(figure, *args, **kwargs)
+
+    def fail_encoding(_figure):
+        raise RuntimeError("encoding failed")
+
+    monkeypatch.setattr(Figure, "clear", tracked_clear)
+    monkeypatch.setattr(
+        SkyChartRenderer,
+        "_save_rgb_png",
+        staticmethod(fail_encoding),
+    )
+
+    with pytest.raises(RuntimeError, match="encoding failed"):
+        SkyChartService(
+            full_catalog_cache=EmptyFullCache(),
+            target_resolver=SkyChartTargetResolver(lambda _name: None),
+            utc_clock=lambda: FIXED_CREATED_AT,
+        ).render(FIXED_REQUEST)
+
+    assert cleared_figures
+    assert len({id(figure) for figure in cleared_figures}) == 1
+    assert cleared_figures[-1].axes == []
 
 
 def test_star_magnitude_order_is_dim_to_bright() -> None:
@@ -320,15 +429,29 @@ def test_store_serializes_once_and_returns_exact_export_bytes(fixed_chart, monke
     ).hexdigest()
 
 
-def test_render_store_expires_and_malformed_ids_match_missing() -> None:
+def test_render_store_rejects_png_metadata_digest_mismatch(fixed_chart) -> None:
+    mismatched = RenderedSkyChart(
+        png_bytes=b"different bytes",
+        metadata=fixed_chart.metadata,
+        catalog_mode_used=fixed_chart.catalog_mode_used,
+        catalog_status=fixed_chart.catalog_status,
+        metadata_json_bytes=fixed_chart.metadata_json_bytes,
+    )
+
+    with pytest.raises(ValueError, match="metadata does not match"):
+        RenderStore().put(mismatched)
+
+
+def test_render_store_expires_and_malformed_ids_match_missing(fixed_chart) -> None:
     now = [0.0]
+    chart = chart_with_png_bytes(fixed_chart, b"a")
     store = RenderStore(
         ttl_seconds=900,
         max_records=2,
-        max_bytes=100,
+        max_bytes=stored_byte_size(chart),
         monotonic_clock=lambda: now[0],
     )
-    first = store.put_bytes_for_test(b"a")
+    first = store.put(chart)
     assert re.fullmatch(r"[A-Za-z0-9_-]{32}", first)
     assert store.get("not/valid") is None
     assert store.get("missing_but_valid") is None
@@ -336,56 +459,78 @@ def test_render_store_expires_and_malformed_ids_match_missing() -> None:
     assert store.get(first) is None
 
 
-def test_render_store_retries_malformed_generated_id(monkeypatch) -> None:
+def test_render_store_retries_malformed_generated_id(fixed_chart, monkeypatch) -> None:
     generated = iter(["not/url-safe", "A" * 32])
     monkeypatch.setattr(
         sky_chart_module.secrets,
         "token_urlsafe",
         lambda _bytes: next(generated),
     )
-    store = RenderStore(max_bytes=100)
-    assert store.put_bytes_for_test(b"a") == "A" * 32
+    chart = chart_with_png_bytes(fixed_chart, b"a")
+    store = RenderStore(max_bytes=stored_byte_size(chart))
+    assert store.put(chart) == "A" * 32
 
 
-def test_render_store_purges_before_malformed_get() -> None:
+def test_render_store_purges_before_malformed_get(fixed_chart) -> None:
     now = [0.0]
-    store = RenderStore(ttl_seconds=1, monotonic_clock=lambda: now[0])
-    render_id = store.put_bytes_for_test(b"a")
+    chart = chart_with_png_bytes(fixed_chart, b"a")
+    store = RenderStore(
+        ttl_seconds=1,
+        max_bytes=stored_byte_size(chart),
+        monotonic_clock=lambda: now[0],
+    )
+    render_id = store.put(chart)
     now[0] = 2.0
     assert store.get("bad/id") is None
     now[0] = 0.0
     assert store.get(render_id) is None
 
 
-def test_render_store_evicts_at_default_record_capacity() -> None:
-    store = RenderStore(max_bytes=10_000)
+def test_render_store_evicts_at_default_record_capacity(fixed_chart) -> None:
+    charts = [
+        chart_with_png_bytes(fixed_chart, str(index).encode())
+        for index in range(21)
+    ]
+    store = RenderStore(max_bytes=sum(stored_byte_size(chart) for chart in charts))
     assert store.max_records == 20
-    ids = [store.put_bytes_for_test(str(index).encode()) for index in range(21)]
+    ids = [store.put(chart) for chart in charts]
     assert store.get(ids[0]) is None
     assert all(store.get(render_id) is not None for render_id in ids[1:])
 
 
-def test_render_store_evicts_at_byte_capacity_and_uses_50_mib_default() -> None:
+def test_render_store_evicts_at_byte_capacity_and_uses_50_mib_default(
+    fixed_chart,
+) -> None:
     assert RenderStore().max_bytes == 50 * 1024 * 1024
-    store = RenderStore(max_records=20, max_bytes=5)
-    first = store.put_bytes_for_test(b"aaa")
-    second = store.put_bytes_for_test(b"bbb")
+    first_chart = chart_with_png_bytes(fixed_chart, b"aaa")
+    second_chart = chart_with_png_bytes(fixed_chart, b"bbb")
+    one_record_size = stored_byte_size(first_chart)
+    assert stored_byte_size(second_chart) == one_record_size
+    store = RenderStore(max_records=20, max_bytes=2 * one_record_size - 1)
+    first = store.put(first_chart)
+    second = store.put(second_chart)
     assert store.get(first) is None
     assert store.get(second) is not None
 
 
-def test_render_store_evicts_earliest_expiry_then_insertion_order_and_clears() -> None:
+def test_render_store_evicts_earliest_expiry_then_insertion_order_and_clears(
+    fixed_chart,
+) -> None:
     now = [0.0]
+    charts = [
+        chart_with_png_bytes(fixed_chart, payload)
+        for payload in (b"a", b"b", b"c")
+    ]
     store = RenderStore(
         ttl_seconds=10,
         max_records=2,
-        max_bytes=10,
+        max_bytes=sum(stored_byte_size(chart) for chart in charts[:2]),
         monotonic_clock=lambda: now[0],
     )
-    first = store.put_bytes_for_test(b"a")
-    second = store.put_bytes_for_test(b"b")
+    first = store.put(charts[0])
+    second = store.put(charts[1])
     now[0] = 1.0
-    third = store.put_bytes_for_test(b"c")
+    third = store.put(charts[2])
     assert store.get(first) is None
     assert store.get(second) is not None
     assert store.get(third) is not None
