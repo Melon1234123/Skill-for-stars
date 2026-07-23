@@ -70,8 +70,48 @@ def _write_report(
     plan: ObservationPlanResult,
     path: Path,
     issues: list[PipelineIssue],
+    language: str,
 ) -> None:
     peak_altitude = max(sample.target_altitude_deg for sample in plan.samples)
+    if language == "zh-CN":
+        lines = [
+            "# 观测报告",
+            "",
+            "## 计算事实",
+            "",
+            f"- 目标：{plan.target.canonical_name}",
+            f"- ICRS 坐标：赤经 {plan.target.ra_deg:.6f}°，赤纬 {plan.target.dec_deg:.6f}°",
+            f"- 采样：{len(plan.samples)} 个，每 {plan.interval_minutes} 分钟一次",
+            f"- 目标最高高度角：{peak_altitude:.6f}°",
+            "",
+            "## 规则判定",
+            "",
+            f"- 最低目标高度角：{plan.criteria.min_target_altitude_deg:g}°",
+            f"- 最高太阳高度角：{plan.criteria.max_sun_altitude_deg:g}°",
+            f"- 候选观测窗口：{len(plan.windows)} 个",
+        ]
+        for window in plan.windows:
+            lines.append(
+                f"- {window.start_local.isoformat()} 至 {window.end_local.isoformat()} "
+                f"（{window.sample_count} 个采样点）"
+            )
+        if issues:
+            lines.extend(["", "## 降级输出", ""])
+            lines.extend(f"- {issue.stage}：{issue.message}" for issue in issues)
+        lines.extend(
+            [
+                "",
+                "## 需要人工复核",
+                "",
+                "- 确认天气、云量和大气透明度。",
+                "- 确认本地地平线遮挡和光污染。",
+                "- 确认设备视场、架设情况和观测安全。",
+                "",
+            ]
+        )
+        path.write_text("\n".join(lines), encoding="utf-8")
+        return
+
     lines = [
         "# Observation Report",
         "",
@@ -207,7 +247,7 @@ def run_pipeline(
 
     report_path = output_dir / "report.md"
     checklist_path = output_dir / "review_checklist.md"
-    _write_report(plan, report_path, issues)
+    _write_report(plan, report_path, issues, task.output.language)
     _write_review_checklist(checklist_path)
 
     artifact_paths = [
