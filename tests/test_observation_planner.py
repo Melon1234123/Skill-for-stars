@@ -1,24 +1,17 @@
 import csv
 from datetime import timedelta
 import json
-from pathlib import Path
 
 import pytest
 from PIL import Image, ImageStat
 
 import starskill
 import starskill.schemas as schemas
-
-
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
+from tests.fixtures.m42 import make_m42_ephemeris
 
 
 def load_m42_ephemeris() -> schemas.EphemerisResult:
-    return schemas.EphemerisResult.model_validate_json(
-        (PROJECT_ROOT / "runs/day3_m42/intermediate/ephemeris.json").read_text(
-            encoding="utf-8"
-        )
-    )
+    return make_m42_ephemeris()
 
 
 def make_ephemeris(

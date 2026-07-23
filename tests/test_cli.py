@@ -11,6 +11,7 @@ from pydantic import ValidationError
 
 import starskill.cli as cli
 from starskill.cli import main
+from tests.fixtures.m42 import write_m42_ephemeris, write_m42_target
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -166,7 +167,8 @@ def test_module_help_lists_ephemeris_command() -> None:
 def test_ephemeris_command_writes_csv_and_json(tmp_path, capsys) -> None:
     csv_path = tmp_path / "day3" / "intermediate" / "ephemeris.csv"
     json_path = tmp_path / "day3" / "intermediate" / "ephemeris.json"
-    target_path = PROJECT_ROOT / "runs/day2_m42/intermediate/target_resolved.json"
+    target_path = tmp_path / "day2" / "intermediate" / "target_resolved.json"
+    write_m42_target(target_path)
 
     exit_code = main(
         [
@@ -209,11 +211,13 @@ def test_plan_command_writes_visibility_result_and_figure(tmp_path, capsys) -> N
     csv_path = tmp_path / "day4" / "intermediate" / "visibility.csv"
     json_path = tmp_path / "day4" / "result.json"
     figure_path = tmp_path / "day4" / "figures" / "visibility_curve.png"
+    ephemeris_path = tmp_path / "day3" / "intermediate" / "ephemeris.json"
+    write_m42_ephemeris(ephemeris_path)
 
     exit_code = main(
         [
             "plan",
-            str(PROJECT_ROOT / "runs/day3_m42/intermediate/ephemeris.json"),
+            str(ephemeris_path),
             "--output",
             str(csv_path),
             "--metadata",
@@ -244,12 +248,14 @@ def test_plan_command_rejects_invalid_threshold_without_outputs(
     csv_path = tmp_path / "visibility.csv"
     json_path = tmp_path / "result.json"
     figure_path = tmp_path / "visibility.png"
+    ephemeris_path = tmp_path / "day3" / "intermediate" / "ephemeris.json"
+    write_m42_ephemeris(ephemeris_path)
 
     try:
         exit_code = main(
             [
                 "plan",
-                str(PROJECT_ROOT / "runs/day3_m42/intermediate/ephemeris.json"),
+                str(ephemeris_path),
                 "--output",
                 str(csv_path),
                 "--metadata",

@@ -7,33 +7,30 @@ from PIL import Image
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
-DAY5_M42_DIR = PROJECT_ROOT / "runs" / "day5_m42"
 
 
 def write_core_m42_bundle(run_dir: Path) -> None:
     run_dir.mkdir(parents=True, exist_ok=True)
 
     artifacts = {
-        "input.json": (PROJECT_ROOT / "examples" / "observation_m42_beijing.json").read_text(
-            encoding="utf-8"
-        ),
-        "result.json": (DAY5_M42_DIR / "result.json").read_text(encoding="utf-8"),
-        "report.md": (DAY5_M42_DIR / "report.md").read_text(encoding="utf-8"),
-        "review_checklist.md": (DAY5_M42_DIR / "review_checklist.md").read_text(
-            encoding="utf-8"
-        ),
-        "intermediate/target_resolved.json": (
-            DAY5_M42_DIR / "intermediate" / "target_resolved.json"
-        ).read_text(encoding="utf-8"),
-        "intermediate/ephemeris.json": (
-            DAY5_M42_DIR / "intermediate" / "ephemeris.json"
-        ).read_text(encoding="utf-8"),
+        "input.json": json.dumps(
+            {"task_type": "observation_plan", "target": "M42"}, indent=2
+        )
+        + "\n",
+        "result.json": json.dumps({"target": {"canonical_name": "M 42"}}) + "\n",
+        "report.md": "# M42 Observation Plan\n",
+        "review_checklist.md": "# Human Review\n",
+        "intermediate/target_resolved.json": json.dumps(
+            {"canonical_name": "M 42"}
+        )
+        + "\n",
+        "intermediate/ephemeris.json": json.dumps({"samples": []}) + "\n",
         "intermediate/ephemeris.csv": (
-            DAY5_M42_DIR / "intermediate" / "ephemeris.csv"
-        ).read_text(encoding="utf-8"),
+            "timestamp_utc,target_altitude_deg\n2026-01-10T10:00:00+00:00,35\n"
+        ),
         "intermediate/visibility.csv": (
-            DAY5_M42_DIR / "intermediate" / "visibility.csv"
-        ).read_text(encoding="utf-8"),
+            "timestamp_utc,is_observable\n2026-01-10T10:00:00+00:00,true\n"
+        ),
         "stdout.json": json.dumps(
             {"status": "success", "output_dir": str(run_dir)}, ensure_ascii=False, indent=2
         )
