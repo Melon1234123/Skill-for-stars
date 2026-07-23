@@ -1,10 +1,17 @@
 """Structured input models for observation tasks."""
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Literal
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    field_serializer,
+    field_validator,
+    model_validator,
+)
 
 
 class InputModel(BaseModel):
@@ -318,6 +325,283 @@ class NasaFeature(InputModel):
     explanation: str | None = None
     copyright: str | None = None
     source: ExternalSource
+
+
+class SkyChartObserver(InputModel):
+    """Observer input dedicated to the local, deterministic sky chart."""
+
+    location_name: str = Field(default="北京", min_length=1, max_length=80)
+    longitude: float = Field(default=116.4074, ge=-180, le=180, allow_inf_nan=False)
+    latitude: float = Field(default=39.9042, ge=-90, le=90, allow_inf_nan=False)
+    timezone: str = "Asia/Shanghai"
+
+    @field_validator("location_name")
+    @classmethod
+    def normalize_location_name(cls, value: str) -> str:
+        value = value.strip()
+        if not value or any(ord(character) < 32 for character in value):
+            raise ValueError("location_name must contain 1..80 visible characters")
+        return value
+
+    @field_validator("timezone")
+    @classmethod
+    def validate_timezone(cls, value: str) -> str:
+        return Observer(location_name="x", longitude=0, latitude=0, timezone=value).timezone
+
+    @field_serializer("longitude", "latitude", when_used="json")
+    def serialize_six_decimal_coordinate(self, value: float) -> float:
+        return round(value, 6)
+
+
+class SkyChartTarget(InputModel):
+    """Mutually exclusive target-name or ICRS-coordinate input."""
+
+    mode: Literal["name", "coordinates"] = "name"
+    name: str | None = "M42"
+    ra_deg: float | None = Field(default=None, allow_inf_nan=False)
+    dec_deg: float | None = Field(default=None, allow_inf_nan=False)
+
+    @model_validator(mode="before")
+    @classmethod
+    def remove_name_default_for_coordinate_input(cls, value: object) -> object:
+        if isinstance(value, dict) and value.get("mode") == "coordinates" and "name" not in value:
+            return {**value, "name": None}
+        return value
+
+    @model_validator(mode="after")
+    def enforce_target_mode(self) -> "SkyChartTarget":
+        if self.mode == "name":
+            if self.ra_deg is not None or self.dec_deg is not None or not self.name:
+                raise ValueError("name target requires only a visible 1..120 character name")
+            name = self.name.strip()
+            if (
+                not name
+                or len(name) > 120
+                or any(ord(character) < 32 or ord(character) == 127 for character in name)
+                or any(
+                    character in name
+                    for character in ":/?#&%\\\"';|<>`$(){}[]*!~"
+                )
+            ):
+                raise ValueError("name target requires only a safe visible 1..120 character name")
+            self.name = name
+        elif (
+            self.name is not None
+            or self.ra_deg is None
+            or self.dec_deg is None
+            or not 0 <= self.ra_deg < 360
+            or not -90 <= self.dec_deg <= 90
+        ):
+            raise ValueError("coordinates target requires only ra_deg and dec_deg")
+        return self
+
+
+class SkyChartRequest(InputModel):
+    """All and only client-controlled sky-chart inputs."""
+
+    observer: SkyChartObserver = Field(default_factory=SkyChartObserver)
+    timestamp_local: datetime
+    target: SkyChartTarget = Field(default_factory=SkyChartTarget)
+    catalog_mode: Literal["auto", "bundled", "full"] = "auto"
+
+    @field_validator("timestamp_local")
+    @classmethod
+    def require_offset(cls, value: datetime) -> datetime:
+        if value.tzinfo is None or value.utcoffset() is None:
+            raise ValueError("timestamp_local must include a timezone offset")
+        return value
+
+    @model_validator(mode="after")
+    def require_matching_zone_offset(self) -> "SkyChartRequest":
+        zone_offset = self.timestamp_local.astimezone(
+            ZoneInfo(self.observer.timezone)
+        ).utcoffset()
+        if self.timestamp_local.utcoffset() != zone_offset:
+            raise ValueError("timestamp_local offset must match observer timezone")
+        return self
+
+
+_SKY_CHART_RENDER_ID_PATTERN = r"^[A-Za-z0-9_-]{1,128}$"
+_SHA256_PATTERN = r"^[0-9a-f]{64}$"
+_SKY_CHART_LAYER_ORDER = [
+    "background",
+    "horizon_grid",
+    "constellations",
+    "stars",
+    "moon",
+    "planets",
+    "target",
+    "footer",
+]
+
+
+class SkyChartRenderResponse(InputModel):
+    render_id: str = Field(pattern=_SKY_CHART_RENDER_ID_PATTERN)
+    png_url: str
+    json_url: str
+    catalog_mode_used: Literal["bundled", "full"]
+    catalog_status: Literal["available", "degraded"]
+    warnings: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def require_same_origin_render_urls(self) -> "SkyChartRenderResponse":
+        base = f"/v1/sky-chart/renders/{self.render_id}"
+        if self.png_url != f"{base}.png" or self.json_url != f"{base}.json":
+            raise ValueError("render URLs must be same-origin URLs for render_id")
+        return self
+
+
+class SkyChartIcrsCoordinates(InputModel):
+    ra_deg: float = Field(ge=0, lt=360, allow_inf_nan=False)
+    dec_deg: float = Field(ge=-90, le=90, allow_inf_nan=False)
+
+    @field_serializer("ra_deg", "dec_deg", when_used="json")
+    def serialize_six_decimal_coordinate(self, value: float) -> float:
+        return round(value, 6)
+
+
+class SkyChartAltAzCoordinates(InputModel):
+    altitude_deg: float = Field(ge=-90, le=90, allow_inf_nan=False)
+    azimuth_deg: float = Field(ge=0, lt=360, allow_inf_nan=False)
+
+    @field_serializer("altitude_deg", "azimuth_deg", when_used="json")
+    def serialize_six_decimal_coordinate(self, value: float) -> float:
+        return round(value, 6)
+
+
+class SkyChartObject(InputModel):
+    label: str = Field(min_length=1, max_length=120)
+    icrs: SkyChartIcrsCoordinates | None
+    altaz: SkyChartAltAzCoordinates
+    visible: bool
+    drawn: bool
+
+
+class SkyChartExportTarget(InputModel):
+    mode: Literal["name", "coordinates"]
+    input: str = Field(min_length=1, max_length=120)
+    resolved: SkyChartObject | None
+
+
+class SkyChartExportRequest(InputModel):
+    observer: SkyChartObserver
+    timestamp_local: datetime
+    timestamp_utc: datetime
+    target: SkyChartExportTarget
+    catalog_mode_requested: Literal["auto", "bundled", "full"]
+    catalog_mode_used: Literal["bundled", "full"]
+
+    @field_validator("timestamp_local")
+    @classmethod
+    def timestamp_local_must_include_offset(cls, value: datetime) -> datetime:
+        if value.tzinfo is None or value.utcoffset() is None:
+            raise ValueError("timestamp_local must include a timezone offset")
+        return value
+
+    @field_validator("timestamp_utc")
+    @classmethod
+    def timestamp_utc_must_be_utc(cls, value: datetime) -> datetime:
+        if value.tzinfo is None or value.utcoffset() != timedelta(0):
+            raise ValueError("timestamp_utc must use UTC offset")
+        return value
+
+    @field_serializer("timestamp_utc", when_used="json")
+    def serialize_timestamp_utc(self, value: datetime) -> str:
+        return value.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+
+    @model_validator(mode="after")
+    def timestamps_must_describe_one_instant(self) -> "SkyChartExportRequest":
+        if self.timestamp_local.astimezone(timezone.utc) != self.timestamp_utc:
+            raise ValueError("local and UTC timestamps must describe the same instant")
+        zone_offset = self.timestamp_local.astimezone(
+            ZoneInfo(self.observer.timezone)
+        ).utcoffset()
+        if self.timestamp_local.utcoffset() != zone_offset:
+            raise ValueError("timestamp_local offset must match observer timezone")
+        return self
+
+
+class SkyChartRenderMetadata(InputModel):
+    projection: Literal["azimuthal_equidistant_zenith"]
+    width_px: Literal[1200]
+    height_px: Literal[900]
+    layer_order: list[
+        Literal[
+            "background",
+            "horizon_grid",
+            "constellations",
+            "stars",
+            "moon",
+            "planets",
+            "target",
+            "footer",
+        ]
+    ]
+    png_sha256: str = Field(pattern=_SHA256_PATTERN)
+
+    @model_validator(mode="after")
+    def require_canonical_layer_order(self) -> "SkyChartRenderMetadata":
+        if self.layer_order != _SKY_CHART_LAYER_ORDER:
+            raise ValueError("layer_order must use the canonical sky-chart order")
+        return self
+
+
+class SkyChartObjectsMetadata(InputModel):
+    moon: SkyChartObject
+    planets: list[SkyChartObject]
+    target: SkyChartObject | None
+    stars_drawn: int = Field(ge=0)
+    constellation_segments_drawn: int = Field(ge=0)
+
+
+class SkyChartCatalogMetadata(InputModel):
+    dataset_id: str = Field(min_length=1)
+    version: str = Field(min_length=1)
+    source_url: str = Field(min_length=1)
+    license: str = Field(min_length=1)
+    sha256: str = Field(pattern=_SHA256_PATTERN)
+    status: Literal["available", "degraded"]
+
+
+class SkyChartCalculationMetadata(InputModel):
+    time_scale: Literal["UTC"] = "UTC"
+    horizontal_frame: Literal["AltAz"] = "AltAz"
+    atmospheric_refraction: Literal[False] = False
+    solar_system_ephemeris: Literal["builtin"] = "builtin"
+    iers_auto_download: Literal[False] = False
+
+
+class SkyChartDependenciesMetadata(InputModel):
+    python: str = Field(min_length=1)
+    astropy: str = Field(min_length=1)
+    matplotlib: str = Field(min_length=1)
+    tzdata: str = Field(min_length=1)
+
+
+class SkyChartExportMetadata(InputModel):
+    """The complete, non-sensitive JSON export for one rendered PNG."""
+
+    schema_version: Literal["1.0"] = "1.0"
+    render_id: str = Field(pattern=_SKY_CHART_RENDER_ID_PATTERN)
+    created_at_utc: datetime
+    request: SkyChartExportRequest
+    render: SkyChartRenderMetadata
+    objects: SkyChartObjectsMetadata
+    catalog: SkyChartCatalogMetadata
+    calculation: SkyChartCalculationMetadata
+    dependencies: SkyChartDependenciesMetadata
+    warnings: list[str] = Field(default_factory=list)
+
+    @field_validator("created_at_utc")
+    @classmethod
+    def created_at_must_be_utc(cls, value: datetime) -> datetime:
+        if value.tzinfo is None or value.utcoffset() != timedelta(0):
+            raise ValueError("created_at_utc must use UTC offset")
+        return value
+
+    @field_serializer("created_at_utc", when_used="json")
+    def serialize_created_at_utc(self, value: datetime) -> str:
+        return value.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
 class TonightRecommendationRequest(InputModel):
