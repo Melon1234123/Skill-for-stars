@@ -5,18 +5,19 @@
   "task_path": "evaluation/tasks/variant-m42-no-window.json",
   "workflow": "run",
   "expected_exit_code": 0,
-  "expected_status": "degraded",
+  "expected_status": "success",
   "required_files": ["run.json", "result.json"],
   "artifacts": [
     {"path": "run.json", "kind": "json"},
     {"path": "result.json", "kind": "json"}
   ],
   "json_assertions": [
-    {"file": "run.json", "pointer": "/status", "equals": "degraded"}
+    {"file": "run.json", "pointer": "/status", "equals": "success"},
+    {"file": "result.json", "pointer": "/windows", "exists": true}
   ],
   "numeric_assertions": [],
   "review_focus": [
-    "check the teacher-facing output explains that no valid observation window was found without blaming the learner"
+    "check the teacher-facing output explains an empty geometric result without blaming the learner"
   ],
   "prompt_file": "evaluation/prompts/workers/teacher.md"
 }

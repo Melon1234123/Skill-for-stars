@@ -1,6 +1,7 @@
 import json
 import shutil
 import hashlib
+import sys
 from contextlib import redirect_stderr
 from io import StringIO
 from pathlib import Path
@@ -12,6 +13,7 @@ from scripts.evaluate_starskill import main
 from starskill.evaluation.cases import load_case
 from starskill.evaluation.checks import check_run
 from starskill.evaluation.reporting import ReportError, collect_score_reports, validate_bonus_evidence
+from starskill.evaluation.runner import execute_case
 from tests.fixtures.evaluation.replay_fixtures import write_core_m42_bundle, write_review_report
 
 
@@ -127,8 +129,7 @@ def test_replay_rejects_json_shaped_fake_worker_evidence(tmp_path: Path) -> None
     (run_dir / "stdout.txt").write_text("", encoding="utf-8")
     (run_dir / "stderr.txt").write_text("", encoding="utf-8")
     (run_dir / "exit_code.txt").write_text("2\n", encoding="utf-8")
-    (run_dir / "tool_calls.jsonl").write_text('{"anything": 1}\n', encoding="utf-8")
-    (run_dir / "response.md").write_text("Captured response.\n", encoding="utf-8")
+    (run_dir / "execution.json").write_text('{"anything": 1}\n', encoding="utf-8")
     review_path = tmp_path / "review.json"
     write_review_report(
         review_path,
@@ -298,43 +299,12 @@ def test_bonus_evidence_requires_linked_structured_measurements_and_verification
 
 def test_replay_returns_structured_error_for_oversized_bonus_measurement_json(tmp_path: Path) -> None:
     run_dir = tmp_path / "run"
-    run_dir.mkdir()
-    (run_dir / "stderr.json").write_text(
-        json.dumps({"valid": False, "error": "validation_error"}), encoding="utf-8"
-    )
-    (run_dir / "stdout.txt").write_text("", encoding="utf-8")
-    (run_dir / "stderr.txt").write_text(
-        json.dumps({"valid": False, "error": "validation_error"}), encoding="utf-8"
-    )
-    (run_dir / "exit_code.txt").write_text("2\n", encoding="utf-8")
-    (run_dir / "response.md").write_text("Captured response.\n", encoding="utf-8")
-    evidence_paths = {
-        "stdout_file": str((run_dir / "stdout.txt").resolve()),
-        "stderr_file": str((run_dir / "stderr.txt").resolve()),
-        "response_file": str((run_dir / "response.md").resolve()),
-    }
-    (run_dir / "tool_calls.jsonl").write_text(
-        json.dumps(
-            {
-                "tool": "run-starskill",
-                "command": "run-starskill",
-                "case_id": "failure-invalid-timezone",
-                "case_kind": "failure",
-                "worker_role": "teacher",
-                "task_path": str(
-                    (PROJECT_ROOT / "evaluation/tasks/failure-invalid-timezone.json").resolve()
-                ),
-                "workflow": "validate",
-                "run_dir": str(run_dir.resolve()),
-                "output_dir": str(run_dir.resolve()),
-                "return_code": 2,
-                **evidence_paths,
-                "result": {"return_code": 2, "output_dir": str(run_dir.resolve()), **evidence_paths},
-            },
-            sort_keys=True,
-        )
-        + "\n",
-        encoding="utf-8",
+    execute_case(
+        PROJECT_ROOT / "evaluation/cases/failures/failure-invalid-timezone.json",
+        run_dir,
+        python_executable=Path(sys.executable),
+        target_cache_dir=tmp_path / "target-cache",
+        image_cache_dir=tmp_path / "image-cache",
     )
     (run_dir / "baseline.json").write_text(
         '{"record_type":"starskill_bonus_measurement","metric":"runtime_seconds",'
@@ -524,10 +494,10 @@ def test_aggregate_rejects_tampered_canonical_worker_roles(tmp_path: Path) -> No
     score_payload = json.loads(score_path.read_text(encoding="utf-8"))
     score_payload["worker_role"] = "research"
     score_path.write_text(json.dumps(score_payload), encoding="utf-8")
-    tool_calls_path = run_dir / "tool_calls.jsonl"
-    tool_payload = json.loads(tool_calls_path.read_text(encoding="utf-8"))
-    tool_payload["worker_role"] = "research"
-    tool_calls_path.write_text(json.dumps(tool_payload) + "\n", encoding="utf-8")
+    execution_path = run_dir / "execution.json"
+    execution_payload = json.loads(execution_path.read_text(encoding="utf-8"))
+    execution_payload["role"] = "research"
+    execution_path.write_text(json.dumps(execution_payload) + "\n", encoding="utf-8")
 
     with pytest.raises(ReportError, match="worker role"):
         collect_score_reports(tmp_path / "scores", cases_root=PROJECT_ROOT / "evaluation/cases")

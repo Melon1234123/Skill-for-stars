@@ -433,7 +433,9 @@ def test_fetch_image_success_requires_downloaded_true_stdout(tmp_path, stdout: s
 
 
 def test_valid_degraded_run_with_exit_code_5_passes(tmp_path) -> None:
-    case = load_case(PROJECT_ROOT / "evaluation/cases/variants/variant-m42-no-window.json")
+    case = load_case(
+        PROJECT_ROOT / "evaluation/cases/variants/variant-m42-no-window.json"
+    ).model_copy(update={"expected_status": "degraded", "json_assertions": []})
     _write_json(tmp_path / "result.json", {"target": {"canonical_name": "M 42"}})
     _write_run_manifest(
         tmp_path,
@@ -449,7 +451,9 @@ def test_valid_degraded_run_with_exit_code_5_passes(tmp_path) -> None:
 
 
 def test_degraded_run_requires_non_empty_issue_evidence(tmp_path) -> None:
-    case = load_case(PROJECT_ROOT / "evaluation/cases/variants/variant-m42-no-window.json")
+    case = load_case(
+        PROJECT_ROOT / "evaluation/cases/variants/variant-m42-no-window.json"
+    ).model_copy(update={"expected_status": "degraded", "json_assertions": []})
     _write_json(tmp_path / "result.json", {"target": {"canonical_name": "M 42"}})
     _write_run_manifest(
         tmp_path,

@@ -11,10 +11,9 @@ from starskill.evaluation.reporting import (
     RawRunInputs,
     ReportError,
     ScoreBundle,
-    _EXECUTION_RECORD_FIELDS,
     _validate_review,
 )
-from starskill.evaluation.models import EvaluationCase, MachineCheckReport, ReviewReport
+from starskill.evaluation.models import ExecutionRecord, EvaluationCase, MachineCheckReport, ReviewReport
 from starskill.schemas import ObservationTask, SDSSImageRequest, SolarSystemRelationshipTask
 
 
@@ -196,36 +195,33 @@ def test_load_case_rejects_array_wildcard_json_pointer(tmp_path: Path) -> None:
         load_case(case_path)
 
 
-def test_worker_prompts_require_real_artifacts_and_exit_codes() -> None:
+def test_role_scenarios_describe_real_artifacts_and_exit_codes() -> None:
     for name in ("teacher", "outreach", "research"):
         text = (PROJECT_ROOT / f"evaluation/prompts/workers/{name}.md").read_text(
             encoding="utf-8"
         )
         assert "exit code" in text.lower()
         assert "不要伪造" in text
-        assert "tool_calls.jsonl" in text
+        assert "execution.json" in text
 
 
 def test_execution_record_protocol_docs_match_validator_schema() -> None:
     expected_fields = {
-        "tool", "command", "case_id", "case_kind", "worker_role", "task_path", "workflow",
-        "run_dir", "output_dir", "return_code", "stdout_file", "stderr_file", "response_file", "result",
+        "recorder", "schema_version", "case_id", "case_kind", "role", "workflow",
+        "task_path", "run_dir", "working_directory", "command_argv", "return_code",
+        "started_at", "completed_at", "stdout_file", "stderr_file", "exit_code_file",
+        "artifact_sha256",
     }
-    assert _EXECUTION_RECORD_FIELDS == expected_fields
+    assert set(ExecutionRecord.model_fields) == expected_fields
 
     documentation_paths = [
-        PROJECT_ROOT / "evaluation/prompts/workers/teacher.md",
-        PROJECT_ROOT / "evaluation/prompts/workers/outreach.md",
-        PROJECT_ROOT / "evaluation/prompts/workers/research.md",
         PROJECT_ROOT / "skills/run-starskill/references/cli-contract.md",
         PROJECT_ROOT / "evaluation/README.md",
     ]
     for path in documentation_paths:
         text = path.read_text(encoding="utf-8")
-        assert "exactly these keys" in text
-        assert "absolute path" in text
-        assert "must not include `arguments`" in text
-        assert "nested `result` object" in text
+        assert "execution.json" in text
+        assert "script" in text.lower()
         for field_name in expected_fields:
             assert f"`{field_name}`" in text
 
@@ -233,7 +229,8 @@ def test_execution_record_protocol_docs_match_validator_schema() -> None:
 def test_evaluation_readme_documents_external_orchestration() -> None:
     text = (PROJECT_ROOT / "evaluation/README.md").read_text(encoding="utf-8")
 
-    assert "不创建 Agent" in text
+    assert "不创建 Agent" not in text
+    assert "evaluate_starskill.py execute" in text
     assert "evaluate_starskill.py replay" in text
     assert "live smoke" in text.lower()
 
@@ -341,14 +338,12 @@ def test_evaluation_readme_contains_exact_ordered_sequence_and_thresholds() -> N
     text = (PROJECT_ROOT / "evaluation/README.md").read_text(encoding="utf-8")
 
     expected_steps = [
-        "1. Load one case manifest.",
-        "2. Create a new Worker Agent with only its role prompt and case input.",
-        "3. Capture its response, tool calls, stdout, stderr, exit code, and output directory.",
-        "4. Repeat the Worker three times for each fixed core case.",
-        "5. Run the replay CLI for machine checks.",
-        "6. Create one rotating reviewer Agent after all Workers finish.",
-        "7. Run replay again with the reviewer JSON.",
-        "8. Aggregate score reports and write the summary.",
+        "1. Load every canonical core and variant manifest.",
+        "2. Create one fresh run directory per case.",
+        "3. Execute the real CLI through `evaluate_starskill.py acceptance` or `execute`.",
+        "4. Let the script write `execution.json`, captured stdout/stderr, exit code, input copies, and artifact hashes.",
+        "5. Replay deterministic artifact, value, provenance, image, and exit-code checks.",
+        "6. Aggregate the nine score reports and require every core and variant hard gate to pass.",
     ]
     positions = [text.index(step) for step in expected_steps]
     assert positions == sorted(positions)
@@ -358,9 +353,9 @@ def test_evaluation_readme_contains_exact_ordered_sequence_and_thresholds() -> N
         "4 | SIMBAD service failure",
         "7 | public data service failure",
         "9 | public response validation failure",
-        "9 independent core Worker runs total",
+        "three core cases and six canonical variants",
         "core average base score at least 80/100",
-        "per-case population standard deviation at most 5",
+        "Live Smoke",
     ):
         assert snippet in text
 

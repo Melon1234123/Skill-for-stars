@@ -373,6 +373,8 @@ python -m starskill fetch-image examples/m51_sdss_image.json \
 
 评审重点不是技能数量，而是每个任务是否从输入到输出形成稳定闭环。本项目的三类任务分别覆盖观测计划、科普表达和公开数据展示，均保留关键中间结果，便于复现和判断可靠性。
 
+当前仓库的运行验收使用脚本记录真实 CLI 子进程，而不依赖 Agent 自报工具调用。它对三个核心案例和六个变体各执行一次、回放证据并聚合结果；详情和命令见 [`evaluation/README.md`](evaluation/README.md)。
+
 ## 后续工程化方向
 
 - 将命令行入口进一步封装为 MCP server，使智能体可通过标准工具协议调用。

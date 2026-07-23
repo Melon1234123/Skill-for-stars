@@ -7,7 +7,6 @@ from PIL import Image
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
-DAY5_M42_DIR = PROJECT_ROOT / "runs" / "day5_m42"
 
 
 def write_core_m42_bundle(run_dir: Path) -> None:
@@ -17,23 +16,16 @@ def write_core_m42_bundle(run_dir: Path) -> None:
         "input.json": (PROJECT_ROOT / "examples" / "observation_m42_beijing.json").read_text(
             encoding="utf-8"
         ),
-        "result.json": (DAY5_M42_DIR / "result.json").read_text(encoding="utf-8"),
-        "report.md": (DAY5_M42_DIR / "report.md").read_text(encoding="utf-8"),
-        "review_checklist.md": (DAY5_M42_DIR / "review_checklist.md").read_text(
-            encoding="utf-8"
-        ),
-        "intermediate/target_resolved.json": (
-            DAY5_M42_DIR / "intermediate" / "target_resolved.json"
-        ).read_text(encoding="utf-8"),
-        "intermediate/ephemeris.json": (
-            DAY5_M42_DIR / "intermediate" / "ephemeris.json"
-        ).read_text(encoding="utf-8"),
-        "intermediate/ephemeris.csv": (
-            DAY5_M42_DIR / "intermediate" / "ephemeris.csv"
-        ).read_text(encoding="utf-8"),
-        "intermediate/visibility.csv": (
-            DAY5_M42_DIR / "intermediate" / "visibility.csv"
-        ).read_text(encoding="utf-8"),
+        "result.json": json.dumps({"target": {"canonical_name": "M 42"}}) + "\n",
+        "report.md": "# M42 observation plan\n",
+        "review_checklist.md": "# Human review\n",
+        "intermediate/target_resolved.json": json.dumps(
+            {"canonical_name": "M 42"}
+        )
+        + "\n",
+        "intermediate/ephemeris.json": json.dumps({"samples": []}) + "\n",
+        "intermediate/ephemeris.csv": "time_utc,target_altitude_deg\n2026-01-10T10:00:00+00:00,35\n",
+        "intermediate/visibility.csv": "time_utc,visible\n2026-01-10T10:00:00+00:00,true\n",
         "stdout.json": json.dumps(
             {"status": "success", "output_dir": str(run_dir)}, ensure_ascii=False, indent=2
         )
@@ -51,7 +43,7 @@ def write_core_m42_bundle(run_dir: Path) -> None:
         started_at="2026-07-19T10:18:36+00:00",
         completed_at="2026-07-19T10:18:37+00:00",
     )
-    _write_worker_evidence(
+    _write_execution_record(
         run_dir,
         exit_code=0,
         case_id="core-m42-beijing",
@@ -62,7 +54,7 @@ def write_core_m42_bundle(run_dir: Path) -> None:
     )
 
 
-def write_variant_m42_degraded_bundle(run_dir: Path) -> None:
+def write_variant_m42_no_window_bundle(run_dir: Path) -> None:
     run_dir.mkdir(parents=True, exist_ok=True)
     _write_text(
         run_dir / "result.json",
@@ -70,10 +62,6 @@ def write_variant_m42_degraded_bundle(run_dir: Path) -> None:
             {
                 "target": {"canonical_name": "M 42"},
                 "windows": [],
-                "summary": {
-                    "status": "degraded",
-                    "reason": "No valid observation window found.",
-                },
             },
             ensure_ascii=False,
             indent=2,
@@ -85,7 +73,7 @@ def write_variant_m42_degraded_bundle(run_dir: Path) -> None:
         run_dir / "stdout.json",
         json.dumps(
             {
-                "status": "degraded",
+                "status": "success",
                 "output_dir": str(run_dir),
                 "message": "No valid observation window found.",
             },
@@ -98,20 +86,14 @@ def write_variant_m42_degraded_bundle(run_dir: Path) -> None:
     _write_text(run_dir / "stderr.txt", "")
     _write_run_json(
         run_dir,
-        status="degraded",
-        issues=[
-            {
-                "stage": "planning",
-                "code": "no_observation_window",
-                "message": "No valid observation window found for the requested constraints.",
-            }
-        ],
+        status="success",
+        issues=[],
         started_at="2026-07-19T10:18:36+00:00",
         completed_at="2026-07-19T10:18:37+00:00",
     )
-    _write_worker_evidence(
+    _write_execution_record(
         run_dir,
-        exit_code=5,
+        exit_code=0,
         case_id="variant-m42-no-window",
         case_kind="variant",
         worker_role="teacher",
@@ -192,7 +174,7 @@ def _write_text(path: Path, content: str) -> None:
     path.write_text(content, encoding="utf-8")
 
 
-def _write_worker_evidence(
+def _write_execution_record(
     run_dir: Path,
     *,
     exit_code: int,
@@ -205,28 +187,49 @@ def _write_worker_evidence(
     _write_text(run_dir / "stdout.txt", (run_dir / "stdout.json").read_text(encoding="utf-8"))
     _write_text(run_dir / "stderr.txt", "")
     _write_text(run_dir / "exit_code.txt", f"{exit_code}\n")
-    _write_text(run_dir / "response.md", "Captured worker response.\n")
-    evidence_paths = {
-        "stdout_file": str((run_dir / "stdout.txt").resolve()),
-        "stderr_file": str((run_dir / "stderr.txt").resolve()),
-        "response_file": str((run_dir / "response.md").resolve()),
+    case_path = next(
+        (PROJECT_ROOT / "evaluation" / "cases" / kind / f"{case_id}.json")
+        for kind in ("core", "variants", "failures", "open")
+        if (PROJECT_ROOT / "evaluation" / "cases" / kind / f"{case_id}.json").is_file()
+    )
+    _write_text(run_dir / "case.json", case_path.read_text(encoding="utf-8"))
+    _write_text(run_dir / "task.json", task_path.read_text(encoding="utf-8"))
+    task_copy = (run_dir / "task.json").resolve()
+    if workflow == "validate":
+        command_argv = [str(PROJECT_ROOT / ".venv/bin/python"), "-m", "starskill", workflow, str(task_copy)]
+    elif workflow == "run":
+        command_argv = [
+            str(PROJECT_ROOT / ".venv/bin/python"), "-m", "starskill", workflow, str(task_copy),
+            "--output-dir", str(run_dir.resolve()), "--cache-dir", str((PROJECT_ROOT / "cache/targets").resolve()),
+        ]
+    else:
+        raise AssertionError(f"fixture does not support workflow {workflow}")
+    artifact_sha256 = {
+        path.relative_to(run_dir).as_posix(): hashlib.sha256(path.read_bytes()).hexdigest()
+        for path in sorted(run_dir.rglob("*"))
+        if path.is_file()
     }
     _write_text(
-        run_dir / "tool_calls.jsonl",
+        run_dir / "execution.json",
         json.dumps(
             {
-                "tool": "run-starskill",
-                "command": "run-starskill",
+                "recorder": "starskill.evaluation.runner",
+                "schema_version": 1,
                 "case_id": case_id,
                 "case_kind": case_kind,
-                "worker_role": worker_role,
-                "task_path": str(task_path.resolve()),
+                "role": worker_role,
+                "task_path": str(task_copy),
                 "workflow": workflow,
                 "run_dir": str(run_dir.resolve()),
-                "output_dir": str(run_dir.resolve()),
+                "working_directory": str(PROJECT_ROOT),
+                "command_argv": command_argv,
                 "return_code": exit_code,
-                **evidence_paths,
-                "result": {"return_code": exit_code, "output_dir": str(run_dir.resolve()), **evidence_paths},
+                "started_at": "2026-07-23T00:00:00+00:00",
+                "completed_at": "2026-07-23T00:00:01+00:00",
+                "stdout_file": str((run_dir / "stdout.txt").resolve()),
+                "stderr_file": str((run_dir / "stderr.txt").resolve()),
+                "exit_code_file": str((run_dir / "exit_code.txt").resolve()),
+                "artifact_sha256": artifact_sha256,
             },
             sort_keys=True,
         )

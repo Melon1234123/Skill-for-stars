@@ -1,4 +1,6 @@
+import hashlib
 import json
+import sys
 from contextlib import redirect_stderr, redirect_stdout
 from io import StringIO
 from pathlib import Path
@@ -14,36 +16,58 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 def _write_worker_evidence(
     run_dir: Path, *, exit_code: int, stderr_file: Path | None = None
 ) -> None:
+    (run_dir / "case.json").write_text(
+        (PROJECT_ROOT / "evaluation/cases/failures/failure-invalid-timezone.json").read_text(
+            encoding="utf-8"
+        ),
+        encoding="utf-8",
+    )
+    (run_dir / "task.json").write_text(
+        (PROJECT_ROOT / "evaluation/tasks/failure-invalid-timezone.json").read_text(
+            encoding="utf-8"
+        ),
+        encoding="utf-8",
+    )
     (run_dir / "stdout.txt").write_text("", encoding="utf-8")
-    (run_dir / "stderr.txt").write_text("", encoding="utf-8")
+    if stderr_file is None:
+        (run_dir / "stderr.txt").write_text("", encoding="utf-8")
     (run_dir / "exit_code.txt").write_text(f"{exit_code}\n", encoding="utf-8")
-    (run_dir / "response.md").write_text("Captured response.\n", encoding="utf-8")
     stderr_path = stderr_file or run_dir / "stderr.txt"
-    evidence_paths = {
-        "stdout_file": str((run_dir / "stdout.txt").resolve()),
-        "stderr_file": str(stderr_path.resolve()),
-        "response_file": str((run_dir / "response.md").resolve()),
+    artifact_sha256 = {
+        path.relative_to(run_dir).as_posix(): hashlib.sha256(path.read_bytes()).hexdigest()
+        for path in sorted(run_dir.rglob("*"))
+        if path.is_file()
     }
-    (run_dir / "tool_calls.jsonl").write_text(
+    (run_dir / "execution.json").write_text(
         json.dumps(
             {
-                "tool": "run-starskill",
-                "command": "run-starskill",
+                "recorder": "starskill.evaluation.runner",
+                "schema_version": 1,
                 "case_id": "failure-invalid-timezone",
                 "case_kind": "failure",
-                "worker_role": "teacher",
-                "task_path": str((PROJECT_ROOT / "evaluation/tasks/failure-invalid-timezone.json").resolve()),
+                "role": "teacher",
+                "task_path": str((run_dir / "task.json").resolve()),
                 "workflow": "validate",
                 "run_dir": str(run_dir.resolve()),
-                "output_dir": str(run_dir.resolve()),
+                "working_directory": str(PROJECT_ROOT),
+                "command_argv": [
+                    str(Path(sys.executable)),
+                    "-m",
+                    "starskill",
+                    "validate",
+                    str((run_dir / "task.json").resolve()),
+                ],
                 "return_code": exit_code,
-                **evidence_paths,
-                "result": {"return_code": exit_code, "output_dir": str(run_dir.resolve()), **evidence_paths},
+                "started_at": "2026-07-23T00:00:00+00:00",
+                "completed_at": "2026-07-23T00:00:01+00:00",
+                "stdout_file": str((run_dir / "stdout.txt").resolve()),
+                "stderr_file": str(stderr_path.resolve()),
+                "exit_code_file": str((run_dir / "exit_code.txt").resolve()),
+                "artifact_sha256": artifact_sha256,
             },
             sort_keys=True,
         )
-        + "\n",
-        encoding="utf-8",
+        + "\n", encoding="utf-8"
     )
 
 

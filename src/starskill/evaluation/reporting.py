@@ -12,7 +12,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from starskill.evaluation.cases import load_cases
 from starskill.evaluation.checks import check_run
-from starskill.evaluation.models import EvaluationCase, EvaluationSummary, MachineCheckReport, ReviewReport, ScoreReport
+from starskill.evaluation.models import EvaluationCase, EvaluationSummary, ExecutionRecord, MachineCheckReport, ReviewReport, ScoreReport
 from starskill.evaluation.scoring import BonusEvidence, aggregate_scores, score_case
 
 
@@ -34,14 +34,7 @@ class RawRunInputs(BaseModel):
     stdout_file: str | None = None
     stderr_file: str | None = None
     exit_code_file: str | None = None
-    tool_calls_file: str | None = None
-    response_file: str | None = None
-
-
-_EXECUTION_RECORD_FIELDS = {
-    "tool", "command", "case_id", "case_kind", "worker_role", "task_path", "workflow",
-    "run_dir", "output_dir", "return_code", "stdout_file", "stderr_file", "response_file", "result",
-}
+    execution_file: str | None = None
 
 NORMAL_REVIEWER_BY_WORKER_ROLE = {
     "teacher": "research",
@@ -84,6 +77,7 @@ def write_case_reports(
     output_dir: Path,
     stdout_file: Path | None = None,
     stderr_file: Path | None = None,
+    execution_file: Path | None = None,
     bonus: dict[str, object] | None = None,
     review_file: Path | None = None,
     worker_role: str | None = None,
@@ -104,8 +98,7 @@ def write_case_reports(
         stdout_file=str(stdout_file.resolve()) if stdout_file is not None else None,
         stderr_file=str(stderr_file.resolve()) if stderr_file is not None else None,
         exit_code_file=str((run_dir / "exit_code.txt").resolve()),
-        tool_calls_file=str((run_dir / "tool_calls.jsonl").resolve()),
-        response_file=str((run_dir / "response.md").resolve()),
+        execution_file=str(execution_file.resolve()) if execution_file is not None else None,
     )
 
     _write_json(
@@ -247,119 +240,113 @@ def _validate_bundle_against_evidence(
 
 def _validate_raw_evidence(bundle: ScoreBundle, case: EvaluationCase, run_dir: Path) -> None:
     raw = bundle.raw_inputs
-    paths = {
-        "stdout_file": raw.stdout_file,
-        "stderr_file": raw.stderr_file,
-        "exit_code_file": raw.exit_code_file,
-        "tool_calls_file": raw.tool_calls_file,
-        "response_file": raw.response_file,
+    record = validate_execution_evidence(case, run_dir)
+    if bundle.worker_role != record.role:
+        raise ReportError("invalid_worker_role", "recorded role differs from score bundle")
+    expected = {
+        "return_code": record.return_code,
+        "stdout": Path(record.stdout_file).read_text(encoding="utf-8"),
+        "stderr": Path(record.stderr_file).read_text(encoding="utf-8"),
+        "stdout_file": record.stdout_file,
+        "stderr_file": record.stderr_file,
+        "exit_code_file": record.exit_code_file,
+        "execution_file": str((run_dir / "execution.json").resolve()),
     }
-    resolved = {name: _resolve_run_evidence_path(run_dir, path, name) for name, path in paths.items()}
-    try:
-        if resolved["stdout_file"].read_text(encoding="utf-8") != raw.stdout:
-            raise ReportError("evidence_mismatch", "captured stdout differs from score bundle")
-        if resolved["stderr_file"].read_text(encoding="utf-8") != raw.stderr:
-            raise ReportError("evidence_mismatch", "captured stderr differs from score bundle")
-        if int(resolved["exit_code_file"].read_text(encoding="utf-8").strip()) != raw.return_code:
-            raise ReportError("evidence_mismatch", "captured exit code differs from score bundle")
-        _validate_tool_call_records(
-            resolved["tool_calls_file"],
-            case,
-            run_dir,
-            raw.return_code,
-            bundle.worker_role,
-            resolved,
-            canonical_worker_role=case.role,
-        )
-        if not resolved["response_file"].read_text(encoding="utf-8").strip():
-            raise ValueError("response.md must not be empty")
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
-        if isinstance(exc, ReportError):
-            raise
-        raise ReportError("invalid_execution_evidence", "captured worker evidence is invalid", details=str(exc)) from exc
+    if raw.model_dump(mode="json") != expected:
+        raise ReportError("evidence_mismatch", "score bundle differs from recorded execution evidence")
 
 
 def validate_execution_evidence(
     case: EvaluationCase,
     run_dir: Path,
-    return_code: int,
-    stdout_file: Path,
-    stderr_file: Path,
-) -> str:
-    raw = RawRunInputs(
-        return_code=return_code,
-        stdout_file=str(stdout_file.resolve()),
-        stderr_file=str(stderr_file.resolve()),
-        exit_code_file=str((run_dir / "exit_code.txt").resolve()),
-        tool_calls_file=str((run_dir / "tool_calls.jsonl").resolve()),
-        response_file=str((run_dir / "response.md").resolve()),
+) -> ExecutionRecord:
+    execution_file = _resolve_run_evidence_path(
+        run_dir, str((run_dir / "execution.json").resolve()), "execution_file"
     )
+    try:
+        payload = json.loads(execution_file.read_text(encoding="utf-8"))
+        record = ExecutionRecord.model_validate(payload)
+        _validate_execution_record(record, case, run_dir)
+        return record
+    except (OSError, UnicodeDecodeError, ValueError, ValidationError) as exc:
+        if isinstance(exc, ReportError):
+            raise
+        raise ReportError(
+            "invalid_execution_evidence",
+            "script-recorded execution evidence is invalid",
+            details=str(exc),
+        ) from exc
+
+
+def _validate_execution_record(
+    record: ExecutionRecord, case: EvaluationCase, run_dir: Path
+) -> None:
+    if (record.case_id, record.case_kind, record.role, record.workflow) != (
+        case.case_id,
+        case.kind,
+        case.role,
+        case.workflow,
+    ):
+        raise ReportError("invalid_execution_evidence", "recorded case identity does not match the manifest")
+    if record.run_dir != str(run_dir) or record.working_directory != str(_project_root()):
+        raise ReportError("invalid_execution_evidence", "recorded directories do not match the captured run")
+    if record.task_path != str((run_dir / "task.json").resolve()):
+        raise ReportError("invalid_execution_evidence", "recorded task path does not match task.json")
+    source_task_path = Path(case.task_path)
+    captured_task_path = run_dir / "task.json"
+    if captured_task_path.read_bytes() != source_task_path.read_bytes():
+        raise ReportError("invalid_execution_evidence", "captured task.json differs from the case input")
+    _validate_recorded_command(record, case, run_dir)
     paths = {
-        "stdout_file": raw.stdout_file,
-        "stderr_file": raw.stderr_file,
-        "exit_code_file": raw.exit_code_file,
-        "tool_calls_file": raw.tool_calls_file,
-        "response_file": raw.response_file,
+        "stdout_file": record.stdout_file,
+        "stderr_file": record.stderr_file,
+        "exit_code_file": record.exit_code_file,
     }
     resolved = {name: _resolve_run_evidence_path(run_dir, path, name) for name, path in paths.items()}
-    try:
-        if int(resolved["exit_code_file"].read_text(encoding="utf-8").strip()) != return_code:
-            raise ReportError("invalid_execution_evidence", "--return-code does not match captured exit_code.txt")
-        if not resolved["response_file"].read_text(encoding="utf-8").strip():
-            raise ReportError("invalid_execution_evidence", "response.md must not be empty")
-        return _validate_tool_call_records(
-            resolved["tool_calls_file"], case, run_dir, return_code, None, resolved
-        )
-    except (OSError, UnicodeDecodeError, ValueError, json.JSONDecodeError) as exc:
-        raise ReportError("invalid_execution_evidence", "captured worker evidence is invalid", details=str(exc)) from exc
-
-
-def _validate_tool_call_records(
-    path: Path,
-    case: EvaluationCase,
-    run_dir: Path,
-    return_code: int,
-    worker_role: str | None,
-    evidence_paths: dict[str, Path],
-    *,
-    canonical_worker_role: str | None = None,
-) -> str:
-    lines = [line for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
-    if not lines:
-        raise ValueError("tool_calls.jsonl must contain one declared run-starskill invocation")
-    roles: set[str] = set()
-    expected_paths = {
-        "stdout_file": str(evidence_paths["stdout_file"]),
-        "stderr_file": str(evidence_paths["stderr_file"]),
-        "response_file": str(evidence_paths["response_file"]),
+    if int(resolved["exit_code_file"].read_text(encoding="utf-8").strip()) != record.return_code:
+        raise ReportError("invalid_execution_evidence", "recorded exit code differs from exit_code.txt")
+    observed_hashes = {
+        path.relative_to(run_dir).as_posix(): hashlib.sha256(path.read_bytes()).hexdigest()
+        for path in sorted(run_dir.rglob("*"))
+        if path.is_file() and path.name != "execution.json"
     }
-    for line in lines:
-        record = json.loads(line)
-        if not isinstance(record, dict) or set(record) != _EXECUTION_RECORD_FIELDS:
-            raise ValueError("tool_calls.jsonl record does not match the execution-evidence schema")
-        if record.get("tool") != "run-starskill" or record.get("command") != "run-starskill":
-            raise ValueError("tool_calls.jsonl record must declare run-starskill")
-        if record.get("case_id") != case.case_id or record.get("case_kind") != case.kind:
-            raise ValueError("tool_calls.jsonl case identity does not match the declared case")
-        if record.get("workflow") != case.workflow or record.get("task_path") != case.task_path:
-            raise ValueError("tool_calls.jsonl task/workflow does not match the declared case")
-        if record.get("worker_role") not in {"teacher", "outreach", "research"}:
-            raise ValueError("tool_calls.jsonl worker_role is invalid")
-        if canonical_worker_role is not None and record["worker_role"] != canonical_worker_role:
-            raise ValueError("tool_calls.jsonl worker_role does not match the canonical case role")
-        if worker_role is not None and record["worker_role"] != worker_role:
-            raise ValueError("tool_calls.jsonl worker_role differs from score bundle")
-        if record.get("run_dir") != str(run_dir) or record.get("output_dir") != str(run_dir):
-            raise ValueError("tool_calls.jsonl run/output directory does not match the captured run")
-        if record.get("return_code") != return_code or any(record.get(key) != value for key, value in expected_paths.items()):
-            raise ValueError("tool_calls.jsonl captured result links do not match the evidence files")
-        result = record.get("result")
-        if result != {"return_code": return_code, "output_dir": str(run_dir), **expected_paths}:
-            raise ValueError("tool_calls.jsonl result does not link to the captured execution evidence")
-        roles.add(record["worker_role"])
-    if len(roles) != 1:
-        raise ValueError("tool_calls.jsonl must declare exactly one worker role")
-    return roles.pop()
+    if not record.artifact_sha256 or any(
+        observed_hashes.get(path) != digest
+        for path, digest in record.artifact_sha256.items()
+    ):
+        raise ReportError("invalid_execution_evidence", "recorded artifact hashes do not match the run directory")
+
+
+def _validate_recorded_command(
+    record: ExecutionRecord, case: EvaluationCase, run_dir: Path
+) -> None:
+    command = record.command_argv
+    task_path = str((run_dir / "task.json").resolve())
+    if not Path(command[0]).is_absolute() or command[1:5] != [
+        "-m",
+        "starskill",
+        case.workflow,
+        task_path,
+    ]:
+        raise ReportError("invalid_execution_evidence", "recorded command does not match the case workflow")
+    if case.workflow == "validate" and len(command) == 5:
+        return
+    if case.workflow == "relationship" and command[5:] == [
+        "--output",
+        str(run_dir / "relationship.csv"),
+        "--metadata",
+        str(run_dir / "relationship.json"),
+    ]:
+        return
+    if case.workflow in {"run", "fetch-image"}:
+        expected = ["--output-dir", str(run_dir), "--cache-dir"]
+        if command[5:8] == expected and len(command) == 9 and Path(command[8]).is_absolute():
+            return
+    raise ReportError("invalid_execution_evidence", "recorded command arguments do not match the runner contract")
+
+
+def _project_root() -> Path:
+    return Path(__file__).resolve().parents[3]
 
 
 def _resolve_run_evidence_path(run_dir: Path, raw_path: str | None, field: str) -> Path:
@@ -587,12 +574,20 @@ def _validate_case_matrix(bundles: list[ScoreBundle], canonical_cases: dict[str,
     counts: dict[str, int] = {}
     for bundle in bundles:
         counts[bundle.case_id] = counts.get(bundle.case_id, 0) + 1
-    missing_core = sorted(case_id for case_id, case in canonical_cases.items() if case.kind == "core" and counts.get(case_id, 0) != 3)
-    missing_variants = sorted(case_id for case_id, case in canonical_cases.items() if case.kind == "variant" and counts.get(case_id, 0) == 0)
+    missing_core = sorted(
+        case_id
+        for case_id, case in canonical_cases.items()
+        if case.kind == "core" and counts.get(case_id, 0) != 1
+    )
+    missing_variants = sorted(
+        case_id
+        for case_id, case in canonical_cases.items()
+        if case.kind == "variant" and counts.get(case_id, 0) != 1
+    )
     if missing_core or missing_variants:
         raise ReportError(
             "incomplete_case_matrix",
-            "aggregate requires three runs for every core case and every canonical variant case",
+            "aggregate requires one recorded run for every core and canonical variant case",
             details={"core": missing_core, "variants": missing_variants},
         )
 
@@ -777,8 +772,7 @@ def _render_case_summary(
         f"- Return code: `{bundle.raw_inputs.return_code}`\n"
         f"- stdout: `{bundle.raw_inputs.stdout_file}`\n"
         f"- stderr: `{bundle.raw_inputs.stderr_file}`\n"
-        f"- tool calls: `{bundle.raw_inputs.tool_calls_file}`\n"
-        f"- response: `{bundle.raw_inputs.response_file}`\n"
+        f"- execution record: `{bundle.raw_inputs.execution_file}`\n"
         f"- review evidence: `{bundle.review_path}`\n\n"
         f"- Critical issues:\n{critical}\n\n"
         "## Human review\n\n"
@@ -831,14 +825,20 @@ def _render_aggregate_summary(summary: EvaluationSummary, bundles: list[ScoreBun
         "",
         "## Critical failure evidence",
         "",
-        "| case_id | run_id | case_kind | hard_gate | base | bonus | total |",
-        "| --- | --- | --- | --- | --- | --- | --- |",
     ]
-    for bundle in bundles:
-        lines.append(
-            f"| {bundle.score.case_id} | {bundle.run_id} | {bundle.score.case_kind} | "
-            f"{bundle.score.hard_gate_passed} | {bundle.score.base_score} | "
-            f"{bundle.score.bonus_score} | {bundle.score.total_score} |"
+    failed_bundles = [bundle for bundle in bundles if not bundle.score.hard_gate_passed]
+    if failed_bundles:
+        lines.extend(
+            [
+                "| case_id | run_id | case_kind | hard_gate | base | bonus | total |",
+                "| --- | --- | --- | --- | --- | --- |",
+                *[
+                    f"| {bundle.score.case_id} | {bundle.run_id} | {bundle.score.case_kind} | "
+                    f"{bundle.score.hard_gate_passed} | {bundle.score.base_score} | "
+                    f"{bundle.score.bonus_score} | {bundle.score.total_score} |"
+                    for bundle in failed_bundles
+                ],
+            ]
         )
     critical_paths = []
     for bundle in bundles:
@@ -849,7 +849,9 @@ def _render_aggregate_summary(summary: EvaluationSummary, bundles: list[ScoreBun
         )
         if bundle.review and bundle.review.get("critical_issues") and bundle.review_path:
             critical_paths.append(f"- `{bundle.case_id}` / `{bundle.run_id}` reviewer evidence: `{bundle.review_path}`")
-    lines.extend(critical_paths or ["- None"])
+    if not failed_bundles:
+        lines.append("- None")
+    lines.extend(critical_paths)
     return "\n".join(lines) + "\n"
 
 

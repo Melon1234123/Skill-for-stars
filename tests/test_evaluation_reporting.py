@@ -3,11 +3,14 @@ from pathlib import Path
 
 import pytest
 
-from starskill.evaluation.cases import load_case
+from starskill.evaluation.cases import load_case, load_cases
 from starskill.evaluation.checks import check_run
 from starskill.evaluation.models import ReviewReport
 from starskill.evaluation.reporting import (
     ReportError,
+    RawRunInputs,
+    ScoreBundle,
+    _validate_case_matrix,
     collect_score_reports,
     write_aggregate_reports,
     write_case_reports,
@@ -16,6 +19,72 @@ from starskill.evaluation.scoring import aggregate_scores, score_case
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
+
+
+def test_runtime_acceptance_matrix_requires_one_core_and_variant_run() -> None:
+    cases = {
+        case.case_id: case
+        for case in load_cases(PROJECT_ROOT / "evaluation/cases")
+    }
+    bundles = [
+        ScoreBundle(
+            run_id=f"run-{case.case_id}",
+            run_dir=str(PROJECT_ROOT),
+            case_id=case.case_id,
+            case_kind=case.kind,
+            worker_role=case.role,
+            machine_checks_path="machine_checks.json",
+            summary_path="summary.md",
+            raw_inputs=RawRunInputs(return_code=case.expected_exit_code),
+            review=None,
+            score={
+                "case_id": case.case_id,
+                "case_kind": case.kind,
+                "hard_gate_passed": True,
+                "base_score": 89,
+                "bonus_score": 0,
+                "total_score": 89,
+                "dimensions": {},
+                "issues": [],
+            },
+        )
+        for case in cases.values()
+        if case.kind in {"core", "variant"}
+    ]
+
+    _validate_case_matrix(bundles, cases)
+
+
+def test_aggregate_summary_omits_failure_table_when_every_run_passes(tmp_path: Path) -> None:
+    case = load_case(PROJECT_ROOT / "evaluation/cases/core/core-m42-beijing.json")
+    bundle = ScoreBundle(
+        run_id="recorded",
+        run_dir=str(PROJECT_ROOT),
+        case_id=case.case_id,
+        case_kind=case.kind,
+        worker_role=case.role,
+        machine_checks_path="machine_checks.json",
+        summary_path="summary.md",
+        raw_inputs=RawRunInputs(return_code=0),
+        review=None,
+        score={
+            "case_id": case.case_id,
+            "case_kind": case.kind,
+            "hard_gate_passed": True,
+            "base_score": 89,
+            "bonus_score": 0,
+            "total_score": 89,
+            "dimensions": {},
+            "issues": [],
+        },
+    )
+    summary = aggregate_scores([bundle.score])
+
+    write_aggregate_reports(summary, [bundle], tmp_path)
+
+    report = (tmp_path / "summary.md").read_text(encoding="utf-8")
+    assert "## Critical failure evidence\n\n- None" in report
+    assert "| case_id |" not in report
 
 
 def _score_payload(
@@ -217,10 +286,7 @@ def test_collect_and_write_aggregate_reports_requires_complete_valid_scores(tmp_
 
     assert [bundle.run_id for bundle in bundles] == ["run-a", "run-b"]
     assert summary_payload["total_runs"] == 2
-    assert "case_id" in markdown
-    assert "run_id" in markdown
-    assert "core-m42" in markdown
-    assert "run-a" in markdown
+    assert "## Critical failure evidence\n\n- None" in markdown
 
 
 def test_collect_score_reports_allows_reused_run_id_in_distinct_run_directories(tmp_path) -> None:

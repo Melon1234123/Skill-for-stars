@@ -1,149 +1,87 @@
-# StarSkill external Agent evaluation protocol
+# StarSkill recorded runtime acceptance
 
-This repository ships prompts, manifests, replay tooling, and scoring logic for an external evaluation harness. It 不创建 Agent, does not create child Agents inside the repository, and does not call an LLM API. Worker and reviewer orchestration must happen outside the repo.
+This repository accepts a release through a small, reproducible runtime matrix. The evaluation script runs the real StarSkill CLI, records the resulting process evidence, replays deterministic checks, and aggregates the score reports. It does not create child Agents and does not call an LLM API.
 
-## Required sequence
+The release matrix contains one fresh recorded run for each of the three core cases and six canonical variants. Failure and open cases are retained as deterministic test coverage, rather than being release-matrix runs. A human review is optional supplementary evidence for presentation or role usability; it is not required for machine runtime acceptance.
 
-1. Load one case manifest.
-2. Create a new Worker Agent with only its role prompt and case input.
-3. Capture its response, tool calls, stdout, stderr, exit code, and output directory.
-4. Repeat the Worker three times for each fixed core case.
-5. Run the replay CLI for machine checks.
-6. Create one rotating reviewer Agent after all Workers finish.
-7. Run replay again with the reviewer JSON.
-8. Aggregate score reports and write the summary.
+The aggregate requires a 1.0 core hard-gate rate, a 1.0 variant hard-gate rate, and a core average base score at least 80/100. A one-run standard deviation is reported descriptively as `0.0`; it is not an acceptance gate.
 
-The reviewer rotation is exact and directed:
+## Acceptance sequence
+
+1. Load every canonical core and variant manifest.
+2. Create one fresh run directory per case.
+3. Execute the real CLI through `evaluate_starskill.py acceptance` or `execute`.
+4. Let the script write `execution.json`, captured stdout/stderr, exit code, input copies, and artifact hashes.
+5. Replay deterministic artifact, value, provenance, image, and exit-code checks.
+6. Aggregate the nine score reports and require every core and variant hard gate to pass.
+
+Run a full acceptance matrix from the repository root:
+
+```bash
+./.venv/bin/python scripts/evaluate_starskill.py acceptance \
+  --run-root evaluation-runs/2026-07-23/agents \
+  --score-root evaluation-runs/2026-07-23/scores \
+  --output-dir evaluation-runs/2026-07-23/aggregate \
+  --python-executable .venv/bin/python \
+  --target-cache-dir cache/targets \
+  --image-cache-dir cache/sdss
+```
+
+All three output directories must be new or empty. The command exits nonzero when a required case or aggregate threshold fails.
+
+For one case, use the two stages separately:
+
+```bash
+./.venv/bin/python scripts/evaluate_starskill.py execute \
+  --case evaluation/cases/core/core-m42-beijing.json \
+  --run-dir evaluation-runs/manual/core-m42-beijing
+
+./.venv/bin/python scripts/evaluate_starskill.py replay \
+  --case evaluation/cases/core/core-m42-beijing.json \
+  --run-dir evaluation-runs/manual/core-m42-beijing \
+  --output-dir evaluation-runs/manual-scores/core-m42-beijing
+```
+
+`replay` reads its exit code, stdout, and stderr only from `execution.json`; it does not accept a Worker-provided result as process evidence.
+
+## Script-recorded evidence
+
+`execute` runs `python -m starskill ...` with `subprocess.run(..., shell=False)` and writes the following files into the new run directory:
+
+- `case.json` and `task.json`: immutable copies used by the executed process.
+- `stdout.txt`, `stderr.txt`, and `exit_code.txt`: observed process outputs.
+- `execution.json`: the script-generated execution record.
+- Product artifacts at their actual CLI output paths.
+
+The strict `execution.json` schema contains `recorder`, `schema_version`, `case_id`, `case_kind`, `role`, `workflow`, `task_path`, `run_dir`, `working_directory`, `command_argv`, `return_code`, `started_at`, `completed_at`, `stdout_file`, `stderr_file`, `exit_code_file`, and `artifact_sha256`.
+
+The replay validator checks the recorded case identity, copied task path, exact command shape, captured paths, exit-code file, and hashes of every file that existed when execution completed. A later optional review or bonus sidecar may be added without changing the recorded process artifact set.
+
+This script can prove its own subprocess execution. It cannot extract Codex Desktop's native tool-event trace. When such a platform trace is available, attach it as external provenance; `execution.json` remains the repository's authoritative runtime evidence.
+
+## Optional Review
+
+An optional human reviewer may contribute the presentation and usability portions of a score report after machine acceptance. The retained rotation is fixed:
 
 - teacher reviewer reviews outreach Worker output
 - outreach reviewer reviews research Worker output
 - research reviewer reviews teacher Worker output
 
-Do not substitute a different reviewer-role mapping. Use the adjudicator prompt only when a normal reviewer reports a critical issue or conflicts with machine checks.
+Do not use a review to overwrite a machine result. A reviewer critical issue still makes that reviewed score fail.
 
-## Directory layout
+## Exit Codes And Boundaries
 
-`evaluation-runs/` is the recommended capture root for external orchestration:
+| Code | Meaning |
+| ---: | --- |
+| 0 | successful command |
+| 2 | input validation failure |
+| 4 | SIMBAD service failure |
+| 5 | complete run degraded because optional visualization failed |
+| 7 | public data service failure |
+| 9 | public response validation failure |
 
-```text
-evaluation-runs/
-  agents/
-    <case-id>/
-      <worker-run-id>/
-        case.json
-        task.json
-        response.md
-        tool_calls.jsonl
-        stdout.txt
-        stderr.txt
-        exit_code.txt
-        ...actual StarSkill output files...
-  reviews/
-    <case-id>.json
-    <case-id>-adjudicator.json
-  scores/
-    <case-id>/
-      <worker-run-id>/
-        machine_checks.json
-        score.json
-        summary.md
-  reports/
-    aggregate_summary.json
-    aggregate_summary.md
-```
+Candidate observation windows are geometric calculations, not a weather, site, equipment, supervision, or safety guarantee. Moon-Jupiter angular separation is an apparent sky relationship, not a three-dimensional physical distance. SDSS attribution and processing metadata must remain in the resulting artifacts.
 
-Each Worker run must use a fresh output directory. Never overwrite a previous run when capturing evidence for replay.
+## Live Smoke
 
-## Worker capture contract
-
-Each Worker receives only:
-
-- the assigned role prompt from `evaluation/prompts/workers/`
-- one case manifest
-- that case manifest's referenced input JSON
-- the shared `skills/run-starskill/references/cli-contract.md`
-
-Every run must preserve real evidence:
-
-- `response.md`
-- `tool_calls.jsonl`
-- `stdout.txt`
-- `stderr.txt`
-- `exit_code.txt`
-- every actual artifact written by the StarSkill CLI
-
-Do not fabricate coordinates, images, files, provenance, tool traces, success states, or review outcomes. The replay harness inspects actual files and the real exit code.
-
-### `tool_calls.jsonl` execution-record schema
-
-Every nonblank line must be one JSON object with exactly these keys: `tool`, `command`, `case_id`, `case_kind`, `worker_role`, `task_path`, `workflow`, `run_dir`, `output_dir`, `return_code`, `stdout_file`, `stderr_file`, `response_file`, and `result`.
-
-- The record must not include `arguments` or any other key. Set `tool` and `command` to `run-starskill`.
-- `case_id`, `case_kind`, `worker_role`, `task_path`, and `workflow` must exactly match the assigned case manifest. `worker_role` is the manifest's canonical role, and `task_path` uses the manifest's absolute path representation.
-- `run_dir` and `output_dir` are the same absolute path of the actual run directory. `stdout_file`, `stderr_file`, and `response_file` are absolute paths inside that directory, and `return_code` is the observed exit code.
-- `result` is a nested `result` object with exactly `return_code`, `output_dir`, `stdout_file`, `stderr_file`, and `response_file`, repeating the linked top-level values.
-
-## Replay commands
-
-Use the existing CLI exactly as implemented:
-
-```powershell
-python scripts/evaluate_starskill.py replay --case evaluation/cases/core/core-m42-beijing.json --run-dir evaluation-runs/agents/core-m42-beijing/teacher-01 --return-code 0 --stdout-file evaluation-runs/agents/core-m42-beijing/teacher-01/stdout.txt --stderr-file evaluation-runs/agents/core-m42-beijing/teacher-01/stderr.txt --review-file evaluation-runs/reviews/core-m42-beijing.json --output-dir evaluation-runs/scores/core-m42-beijing/teacher-01
-python scripts/evaluate_starskill.py aggregate --score-root evaluation-runs/scores --output-dir evaluation-runs/reports
-```
-
-Run `evaluate_starskill.py replay` once per Worker run. First replay may omit `--review-file` if the rotating reviewer has not run yet. After reviewer JSON exists, run replay again for that same Worker bundle with the reviewer JSON included. Then aggregate all score reports.
-
-## Bonus evidence protocol
-
-A nonzero bonus claim must keep all evidence inside the Worker run directory, unless a `repo:` path explicitly identifies a repository-local file. Every declared path must be readable and non-empty. `evidence_paths` must include the three referenced records below.
-
-- `baseline` and `comparison` each point to a JSON object with exactly `record_type`, `metric`, `unit`, and `value`. `record_type` is `starskill_bonus_measurement`; `metric` and `unit` are non-empty strings; and `value` is a finite number. The records must use the same metric and unit but different values.
-- `verification` points to a JSON object with exactly `record_type`, `command`, `exit_code`, and `passed`. `record_type` is `starskill_bonus_verification`; `command` is non-empty; `exit_code` is `0`; and `passed` is `true`.
-
-Descriptions explain a claim but are not evidence. Bare prose, empty files, or unrelated files cannot support bonus points.
-
-## Failure-case exit-code table
-
-The six failure manifests and their expected CLI exit behavior are:
-
-| Case ID | Workflow | Expected exit code | Meaning |
-| --- | --- | ---: | --- |
-| `failure-invalid-observation-input` | `validate` | 2 | input validation failure |
-| `failure-invalid-timezone` | `validate` | 2 | input validation failure |
-| `failure-target-service` | `run` | 4 | SIMBAD service failure |
-| `failure-no-observation-window` | `run` | 0 | successful run with a no-window result |
-| `failure-sdss-service` | `fetch-image` | 7 | public data service failure |
-| `failure-sdss-invalid-response` | `fetch-image` | 9 | public response validation failure |
-
-Preserve the structured stderr and the observed exit code exactly. Nonzero exits are not success, and exit code `0` in `failure-no-observation-window` still requires checking the produced status and artifacts.
-
-## Cache mode vs live mode
-
-- Cache or fixture-backed replay mode is the normal acceptance path for deterministic evaluation and scoring.
-- Live smoke checks are separate health checks for current SIMBAD or SDSS availability and must not be merged into the deterministic acceptance score.
-- A live smoke result may be useful to report operational status, but it does not override replay evidence and does not change whether the Skill passes its repository evaluation threshold.
-
-## Acceptance line
-
-The acceptance line for fixed-case evaluation is:
-
-- 9 independent core Worker runs total: three runs each for the three fixed core cases.
-- core average base score at least 80/100.
-- per-case population standard deviation at most 5 for each fixed case's three runs.
-- variant hard-gate pass rate at least 90%; with six current variant cases, that means 6/6.
-- hard-gate failures cannot be repaired by reviewer generosity or bonus points.
-
-Open-task scores are reported separately and do not decide the fixed-case pass line.
-
-## Reviewer and adjudicator contract
-
-Normal reviewers run only after all Worker runs for the assigned case finish. They must emit exactly one `ReviewReport` JSON object, must not override machine evidence, and must flag prohibited claims such as:
-
-- fabricated coordinates, images, provenance, files, or tool calls
-- claiming success against the real exit code or missing artifacts
-- treating candidate observation windows as weather, site, equipment, or safety guarantees
-- treating apparent Moon-Jupiter angular separation as physical distance
-- replacing external-provider failures with invented success
-
-Use the adjudicator prompt only when a normal reviewer reports a critical issue or conflicts with machine checks.
+A live smoke run may report current external-service health, but it does not replace cache-backed acceptance evidence or loosen the nine-case runtime matrix.

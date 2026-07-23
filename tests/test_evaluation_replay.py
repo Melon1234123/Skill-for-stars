@@ -5,7 +5,7 @@ from scripts.evaluate_starskill import main
 from tests.fixtures.evaluation.replay_fixtures import (
     write_core_m42_bundle,
     write_review_report,
-    write_variant_m42_degraded_bundle,
+    write_variant_m42_no_window_bundle,
 )
 
 
@@ -66,21 +66,21 @@ def test_replay_command_accepts_a_complete_core_m42_bundle(tmp_path) -> None:
     assert score_payload["score"]["base_score"] == 100
 
 
-def test_replay_command_accepts_a_valid_degraded_bundle_with_exit_code_5(
+def test_replay_command_accepts_a_valid_empty_window_bundle(
     tmp_path,
 ) -> None:
     run_dir = tmp_path / "variant-m42-run"
     output_dir = tmp_path / "variant-m42-score"
     review_file = tmp_path / "reviews" / "variant-m42-teacher.json"
 
-    write_variant_m42_degraded_bundle(run_dir)
+    write_variant_m42_no_window_bundle(run_dir)
     write_review_report(
         review_file,
         case_id="variant-m42-no-window",
         reviewer_role="research",
         role_usability_points=5,
         safety_review_points=6,
-        issues=["Explains the degraded result clearly."],
+        issues=["Explains the empty geometric result clearly."],
     )
 
     exit_code = main(
@@ -91,7 +91,7 @@ def test_replay_command_accepts_a_valid_degraded_bundle_with_exit_code_5(
             "--run-dir",
             str(run_dir),
             "--return-code",
-            "5",
+            "0",
             "--stdout-file",
             str(run_dir / "stdout.txt"),
             "--stderr-file",

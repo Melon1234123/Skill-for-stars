@@ -37,20 +37,15 @@ Do not substitute fabricated coordinates, images, source metadata, or success re
 4. For public imagery, inspect `image_metadata.json` for source URL, dimensions, byte count, SHA-256, processing steps, and attribution.
 5. Summarize computed facts separately from rule-based conclusions and human-review items.
 
-## Evaluation Replay
+## Recorded Runtime Acceptance
 
-This Skill is evaluated by an external Agent harness. The repository does not create child Agents for evaluation, does not call an LLM API for evaluation, and each captured run must use a fresh output directory.
+The repository does not create child Agents and does not call an LLM API for evaluation. `scripts/evaluate_starskill.py execute` runs the CLI itself in a fresh directory and records real subprocess evidence. `acceptance` executes one run for each core and variant case, then replays and aggregates them.
 
-For replayable evaluation runs, the external harness must preserve and inspect actual evidence:
+The script writes `case.json`, `task.json`, `stdout.txt`, `stderr.txt`, `exit_code.txt`, and `execution.json`, in addition to the actual product files. The Worker or role prompt never writes `tool_calls.jsonl` or `execution.json`.
 
-- the exact command that ran
-- the observed exit code
-- captured stdout and stderr
-- `response.md`
-- `tool_calls.jsonl`
-- every actual output file produced under the run directory
+`execution.json` records the exact argv, observed exit code, captured-output locations, and SHA-256 hashes. Replay validates those facts before it checks the astronomy artifacts. The repository can prove this script-owned subprocess trace, but cannot automatically extract Codex Desktop's native tool-event history; attach that separately when it exists.
 
-The harness must inspect real files and exit codes instead of trusting prose summaries. Do not fabricate coordinates, images, source metadata, cache hits, success states, or missing artifacts. If a service fails or the run degrades, preserve that structured state for replay.
+Do not fabricate coordinates, images, source metadata, cache hits, success states, or missing artifacts. If a service fails or the run degrades, preserve that structured state for replay.
 
 ## Preserve Human Review
 

@@ -76,6 +76,28 @@ class EvaluationCase(EvaluationModel):
     prompt_file: str
 
 
+class ExecutionRecord(EvaluationModel):
+    recorder: Literal["starskill.evaluation.runner"]
+    schema_version: Literal[1]
+    case_id: str = Field(min_length=1)
+    case_kind: Literal["core", "variant", "failure", "open"]
+    role: Literal["teacher", "outreach", "research"]
+    workflow: Literal[
+        "validate", "resolve", "ephemeris", "plan", "run", "relationship", "fetch-image"
+    ]
+    task_path: str = Field(min_length=1)
+    run_dir: str = Field(min_length=1)
+    working_directory: str = Field(min_length=1)
+    command_argv: list[str] = Field(min_length=5)
+    return_code: int
+    started_at: str = Field(min_length=1)
+    completed_at: str = Field(min_length=1)
+    stdout_file: str = Field(min_length=1)
+    stderr_file: str = Field(min_length=1)
+    exit_code_file: str = Field(min_length=1)
+    artifact_sha256: dict[str, str]
+
+
 class CheckIssue(EvaluationModel):
     code: str
     message: str

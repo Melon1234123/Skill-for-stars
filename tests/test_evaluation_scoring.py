@@ -92,13 +92,14 @@ def test_critical_machine_issue_cannot_be_repaired_by_bonus() -> None:
     assert report.issues == machine.issues
 
 
-def test_score_case_returns_zero_when_reviewer_is_missing() -> None:
+def test_score_case_accepts_machine_only_runtime_evidence() -> None:
     report = score_case(passing_machine("core-m51"), None, {"acceleration": bonus_claim(3)})
 
-    assert report.hard_gate_passed is False
-    assert report.base_score == 0
-    assert report.bonus_score == 0
-    assert report.total_score == 0
+    assert report.hard_gate_passed is True
+    assert report.base_score == 89
+    assert report.bonus_score == 3
+    assert report.total_score == 92
+    assert report.dimensions["role_usability"] == 0
     assert report.issues == []
 
 
@@ -166,7 +167,7 @@ def test_score_case_clamps_machine_safety_to_four_before_reviewer_safety() -> No
     assert report.base_score == 95
 
 
-def test_aggregate_reports_standard_deviation_and_thresholds() -> None:
+def test_aggregate_reports_runtime_acceptance_thresholds() -> None:
     reports = [
         score_case(passing_machine("core-m42"), passing_review("core-m42"), {}),
         score_case(passing_machine("core-m42"), passing_review("core-m42"), {}),
@@ -184,16 +185,14 @@ def test_aggregate_reports_standard_deviation_and_thresholds() -> None:
     assert summary.per_case_standard_deviation["core-m42"] == 0
     assert summary.open_task_scores == {}
     assert summary.thresholds == {
-        "baseline_hard_gate_rate": 1.0,
-        "variant_hard_gate_rate": 0.9,
+        "core_hard_gate_rate": 1.0,
+        "variant_hard_gate_rate": 1.0,
         "core_average_base_score": 80.0,
-        "per_case_stddev_max": 5.0,
     }
     assert summary.decisions == {
-        "baseline_all_passed": True,
+        "core_all_passed": True,
         "variants_passed": True,
         "core_average_passed": True,
-        "stability_passed": True,
         "passed": True,
     }
     assert summary.passed is True
@@ -279,7 +278,7 @@ def test_aggregate_scores_accepts_population_standard_deviation_at_five() -> Non
     assert summary.passed is True
 
 
-def test_aggregate_scores_rejects_population_standard_deviation_above_five() -> None:
+def test_aggregate_scores_reports_variation_without_using_it_as_a_pass_gate() -> None:
     reports = [
         score_case(
             passing_machine("core-m51").model_copy(
@@ -318,10 +317,10 @@ def test_aggregate_scores_rejects_population_standard_deviation_above_five() -> 
     summary = aggregate_scores(reports)
 
     assert summary.per_case_standard_deviation["core-m51"] == 6
-    assert summary.passed is False
+    assert summary.passed is True
 
 
-def test_aggregate_scores_uses_unrounded_stddev_for_pass_fail() -> None:
+def test_aggregate_scores_keeps_standard_deviation_as_descriptive_output() -> None:
     reports = [
         ScoreReport(
             case_id="core-stability",
@@ -348,8 +347,7 @@ def test_aggregate_scores_uses_unrounded_stddev_for_pass_fail() -> None:
     summary = aggregate_scores(reports)
 
     assert summary.per_case_standard_deviation["core-stability"] == 5.0
-    assert summary.decisions["stability_passed"] is False
-    assert summary.passed is False
+    assert summary.passed is True
 
 
 def test_aggregate_scores_groups_by_case_kind_not_case_id_prefix() -> None:
@@ -365,4 +363,4 @@ def test_aggregate_scores_groups_by_case_kind_not_case_id_prefix() -> None:
     assert summary.core_hard_gate_pass_rate == 1
     assert summary.variant_hard_gate_pass_rate == pytest.approx(0.5)
     assert summary.open_task_scores == {"delta": 0}
-    assert summary.decisions["baseline_all_passed"] is True
+    assert summary.decisions["core_all_passed"] is True

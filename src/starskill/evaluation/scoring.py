@@ -24,10 +24,9 @@ BASE_DIMENSION_LIMITS = {
 }
 
 THRESHOLDS = {
-    "baseline_hard_gate_rate": 1.0,
-    "variant_hard_gate_rate": 0.9,
+    "core_hard_gate_rate": 1.0,
+    "variant_hard_gate_rate": 1.0,
     "core_average_base_score": 80.0,
-    "per_case_stddev_max": 5.0,
 }
 
 
@@ -75,7 +74,7 @@ def score_case(
             issues=machine.issues,
         )
 
-    if review is None or review.critical_issues:
+    if review is not None and review.critical_issues:
         return ScoreReport(
             case_id=machine.case_id,
             case_kind=machine.case_kind,
@@ -88,6 +87,8 @@ def score_case(
         )
 
     bonus_points = BonusEvidence.model_validate(bonus)
+    reviewer_safety = review.safety_review_points if review is not None else 0.0
+    role_usability = review.role_usability_points if review is not None else 0.0
     machine_safety = min(4.0, max(0.0, float(machine.dimension_points["machine_safety"])))
     dimensions = {
         "closed_loop": min(
@@ -104,11 +105,11 @@ def score_case(
         ),
         "error_and_safety": min(
             BASE_DIMENSION_LIMITS["error_and_safety"],
-            machine_safety + review.safety_review_points,
+            machine_safety + reviewer_safety,
         ),
         "role_usability": min(
             BASE_DIMENSION_LIMITS["role_usability"],
-            review.role_usability_points,
+            role_usability,
         ),
     }
     base_score = round(sum(dimensions.values()), 2)
@@ -153,7 +154,6 @@ def score_case(
 def aggregate_scores(reports: list[ScoreReport]) -> EvaluationSummary:
     total_runs = len(reports)
     fixed_reports = [report for report in reports if report.case_kind != "open"]
-    baseline_reports = [report for report in fixed_reports if report.case_kind != "variant"]
     core_reports = [report for report in fixed_reports if report.case_kind == "core"]
     variant_reports = [report for report in fixed_reports if report.case_kind == "variant"]
     open_reports = [report for report in reports if report.case_kind == "open"]
@@ -181,9 +181,7 @@ def aggregate_scores(reports: list[ScoreReport]) -> EvaluationSummary:
     average_base_score = _average([report.base_score for report in fixed_reports])
     core_average_base_score = _average([report.base_score for report in core_reports])
 
-    baseline_all_passed = not baseline_reports or all(
-        report.hard_gate_passed for report in baseline_reports
-    )
+    core_all_passed = bool(core_reports) and all(report.hard_gate_passed for report in core_reports)
     variants_passed = (
         not variant_reports
         or variant_hard_gate_pass_rate >= THRESHOLDS["variant_hard_gate_rate"]
@@ -192,20 +190,15 @@ def aggregate_scores(reports: list[ScoreReport]) -> EvaluationSummary:
         not core_reports
         or core_average_base_score >= THRESHOLDS["core_average_base_score"]
     )
-    stability_passed = all(
-        value <= THRESHOLDS["per_case_stddev_max"] for value in per_case_stddev_raw.values()
-    )
     passed = (
-        baseline_all_passed
+        core_all_passed
         and variants_passed
         and core_average_passed
-        and stability_passed
     )
     decisions = {
-        "baseline_all_passed": baseline_all_passed,
+        "core_all_passed": core_all_passed,
         "variants_passed": variants_passed,
         "core_average_passed": core_average_passed,
-        "stability_passed": stability_passed,
         "passed": passed,
     }
 

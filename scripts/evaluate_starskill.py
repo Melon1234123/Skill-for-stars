@@ -22,6 +22,7 @@ from starskill.evaluation.reporting import (
     write_aggregate_reports,
     write_case_reports,
 )
+from starskill.evaluation.runner import ExecutionError, execute_case
 from starskill.evaluation.scoring import aggregate_scores, score_case
 
 
@@ -29,12 +30,19 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="evaluate_starskill")
     commands = parser.add_subparsers(dest="command", required=True)
 
+    execute_parser = commands.add_parser("execute", help="run one case and record the real CLI process")
+    execute_parser.add_argument("--case", type=Path, required=True)
+    execute_parser.add_argument("--run-dir", type=Path, required=True)
+    execute_parser.add_argument("--python-executable", type=Path, default=Path(sys.executable))
+    execute_parser.add_argument("--target-cache-dir", type=Path, default=Path("cache/targets"))
+    execute_parser.add_argument("--image-cache-dir", type=Path, default=Path("cache/sdss"))
+
     replay_parser = commands.add_parser("replay", help="replay a saved local evaluation run")
     replay_parser.add_argument("--case", type=Path, required=True)
     replay_parser.add_argument("--run-dir", type=Path, required=True)
-    replay_parser.add_argument("--return-code", type=int, required=True)
-    replay_parser.add_argument("--stdout-file", type=Path)
-    replay_parser.add_argument("--stderr-file", type=Path)
+    replay_parser.add_argument("--return-code", type=int, help=argparse.SUPPRESS)
+    replay_parser.add_argument("--stdout-file", type=Path, help=argparse.SUPPRESS)
+    replay_parser.add_argument("--stderr-file", type=Path, help=argparse.SUPPRESS)
     replay_parser.add_argument("--review-file", type=Path)
     replay_parser.add_argument("--bonus-file", type=Path)
     replay_parser.add_argument("--escalation-file", type=Path)
@@ -44,12 +52,30 @@ def main(argv: Sequence[str] | None = None) -> int:
     aggregate_parser.add_argument("--score-root", type=Path, required=True)
     aggregate_parser.add_argument("--output-dir", type=Path, required=True)
 
+    acceptance_parser = commands.add_parser(
+        "acceptance",
+        help="execute and replay the one-run core and variant acceptance matrix",
+    )
+    acceptance_parser.add_argument("--run-root", type=Path, required=True)
+    acceptance_parser.add_argument("--score-root", type=Path, required=True)
+    acceptance_parser.add_argument("--output-dir", type=Path, required=True)
+    acceptance_parser.add_argument("--python-executable", type=Path, default=Path(sys.executable))
+    acceptance_parser.add_argument("--target-cache-dir", type=Path, default=Path("cache/targets"))
+    acceptance_parser.add_argument("--image-cache-dir", type=Path, default=Path("cache/sdss"))
+
     args = parser.parse_args(argv)
 
     try:
+        if args.command == "execute":
+            return _execute(args)
         if args.command == "replay":
             return _replay(args)
+        if args.command == "acceptance":
+            return _acceptance(args)
         return _aggregate(args)
+    except ExecutionError as exc:
+        _print_error("execution_error", str(exc))
+        return 1
     except CaseManifestError as exc:
         _print_error("invalid_case_manifest", str(exc), exc.details)
         return 1
@@ -65,23 +91,21 @@ def _replay(args: argparse.Namespace) -> int:
     _reject_output_inside_run_dir(run_dir, output_dir)
 
     case = load_case(case_path)
-    stdout_file = _optional_file(args.stdout_file) or run_dir / "stdout.txt"
-    stderr_file = _optional_file(args.stderr_file) or run_dir / "stderr.txt"
     review_file = _optional_file(args.review_file)
     bonus_file = _optional_file(args.bonus_file)
     escalation_file = _optional_file(args.escalation_file)
 
-    worker_role = validate_execution_evidence(
-        case, run_dir, args.return_code, stdout_file, stderr_file
-    )
+    execution = validate_execution_evidence(case, run_dir)
+    stdout_file = Path(execution.stdout_file)
+    stderr_file = Path(execution.stderr_file)
     stdout_text = _read_optional_text(stdout_file)
     stderr_text = _read_optional_text(stderr_file)
     review = _read_review(review_file)
     bonus = _read_bonus(bonus_file)
     escalation = _read_escalation(escalation_file)
     validate_bonus_evidence(bonus, run_dir, case)
-    machine = check_run(case, run_dir, args.return_code, stdout_text, stderr_text)
-    _validate_replay_identity(case, review, worker_role, machine, escalation)
+    machine = check_run(case, run_dir, execution.return_code, stdout_text, stderr_text)
+    _validate_replay_identity(case, review, execution.role, machine, escalation)
     try:
         score = score_case(machine, review, bonus)
     except (ValidationError, ValueError) as exc:
@@ -98,7 +122,7 @@ def _replay(args: argparse.Namespace) -> int:
     bundle = write_case_reports(
         case=case,
         run_dir=run_dir,
-        return_code=args.return_code,
+        return_code=execution.return_code,
         stdout_text=stdout_text,
         stderr_text=stderr_text,
         review=review,
@@ -107,9 +131,10 @@ def _replay(args: argparse.Namespace) -> int:
         output_dir=output_dir,
         stdout_file=stdout_file,
         stderr_file=stderr_file,
+        execution_file=run_dir / "execution.json",
         bonus=bonus,
         review_file=review_file,
-        worker_role=worker_role,
+        worker_role=execution.role,
         escalation=escalation,
         escalation_file=escalation_file,
     )
@@ -120,6 +145,31 @@ def _replay(args: argparse.Namespace) -> int:
                 "case_id": bundle.score.case_id,
                 "run_id": bundle.run_id,
                 "output_dir": str(output_dir),
+            },
+            ensure_ascii=False,
+            indent=2,
+            sort_keys=True,
+        )
+    )
+    return 0
+
+
+def _execute(args: argparse.Namespace) -> int:
+    record = execute_case(
+        args.case,
+        args.run_dir,
+        python_executable=args.python_executable,
+        target_cache_dir=args.target_cache_dir,
+        image_cache_dir=args.image_cache_dir,
+    )
+    print(
+        json.dumps(
+            {
+                "ok": True,
+                "case_id": record.case_id,
+                "return_code": record.return_code,
+                "run_dir": record.run_dir,
+                "execution_file": str(Path(record.run_dir) / "execution.json"),
             },
             ensure_ascii=False,
             indent=2,
@@ -149,6 +199,96 @@ def _aggregate(args: argparse.Namespace) -> int:
         )
     )
     return 0
+
+
+def _acceptance(args: argparse.Namespace) -> int:
+    """Run the release matrix with script-owned process evidence only."""
+    run_root = _prepare_fresh_directory(args.run_root, "run root")
+    score_root = _prepare_fresh_directory(args.score_root, "score root")
+    output_dir = _prepare_fresh_directory(args.output_dir, "aggregate output directory")
+    _reject_overlapping_directories(run_root, score_root, output_dir)
+    cases_root = Path(__file__).resolve().parents[1] / "evaluation" / "cases"
+    case_paths = [
+        path
+        for path in sorted(cases_root.rglob("*.json"))
+        if load_case(path).kind in {"core", "variant"}
+    ]
+    results: list[dict[str, object]] = []
+    for case_path in case_paths:
+        case = load_case(case_path)
+        run_dir = run_root / case.case_id / "recorded"
+        score_dir = score_root / case.case_id / "recorded"
+        record = execute_case(
+            case_path,
+            run_dir,
+            python_executable=args.python_executable,
+            target_cache_dir=args.target_cache_dir,
+            image_cache_dir=args.image_cache_dir,
+        )
+        replay_exit = _replay(
+            argparse.Namespace(
+                case=case_path,
+                run_dir=run_dir,
+                review_file=None,
+                bonus_file=None,
+                escalation_file=None,
+                output_dir=score_dir,
+            )
+        )
+        results.append(
+            {
+                "case_id": case.case_id,
+                "return_code": record.return_code,
+                "replay_exit_code": replay_exit,
+                "run_dir": str(run_dir.resolve()),
+                "score_dir": str(score_dir.resolve()),
+            }
+        )
+
+    bundles = collect_score_reports(score_root, cases_root=cases_root)
+    summary = aggregate_scores([bundle.score for bundle in bundles])
+    write_aggregate_reports(summary, bundles, output_dir)
+    print(
+        json.dumps(
+            {
+                "ok": summary.passed,
+                "total_runs": summary.total_runs,
+                "passed": summary.passed,
+                "run_root": str(run_root),
+                "score_root": str(score_root),
+                "output_dir": str(output_dir),
+                "runs": results,
+            },
+            ensure_ascii=False,
+            indent=2,
+            sort_keys=True,
+        )
+    )
+    return 0 if summary.passed else 1
+
+
+def _prepare_fresh_directory(path: Path, label: str) -> Path:
+    resolved = path.resolve()
+    if resolved.exists() and (not resolved.is_dir() or any(resolved.iterdir())):
+        raise ReportError("unsafe_output_path", f"{label} must be new and empty: {resolved}")
+    resolved.mkdir(parents=True, exist_ok=True)
+    return resolved
+
+
+def _reject_overlapping_directories(*paths: Path) -> None:
+    for index, left in enumerate(paths):
+        for right in paths[index + 1 :]:
+            try:
+                right.relative_to(left)
+            except ValueError:
+                try:
+                    left.relative_to(right)
+                except ValueError:
+                    continue
+            raise ReportError(
+                "unsafe_output_path",
+                "acceptance run, score, and aggregate directories must not overlap",
+            )
 
 
 def _require_file(path: Path) -> Path:

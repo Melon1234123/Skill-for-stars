@@ -59,27 +59,21 @@ Errors are JSON on stderr. Never reinterpret a nonzero exit as success. A failed
 
 ## Evaluation replay capture
 
-When an external evaluation harness runs this CLI, it must preserve the actual evidence for replay:
+The repository does not create child Agents and does not call an LLM API through this CLI contract. `scripts/evaluate_starskill.py execute` invokes this CLI using a script-owned `subprocess.run(..., shell=False)` process and writes `execution.json`; a role prompt or Worker must not write `tool_calls.jsonl` or execution evidence.
 
-- the exact command
-- the assigned case manifest and input JSON
-- the real exit code
-- captured stdout
-- captured stderr
-- `response.md`
-- `tool_calls.jsonl`
-- every actual artifact written under the run directory
+The script captures the assigned manifest and task copies, exact command, real exit code, stdout, stderr, and every artifact that existed when the process completed. `replay` validates the record and files rather than trusting natural-language summaries.
 
-### `tool_calls.jsonl` execution-record schema
+### `execution.json` execution-record schema
 
-Each nonblank line is one strict JSON object with exactly these keys: `tool`, `command`, `case_id`, `case_kind`, `worker_role`, `task_path`, `workflow`, `run_dir`, `output_dir`, `return_code`, `stdout_file`, `stderr_file`, `response_file`, and `result`.
+The strict script-generated object has exactly these fields: `recorder`, `schema_version`, `case_id`, `case_kind`, `role`, `workflow`, `task_path`, `run_dir`, `working_directory`, `command_argv`, `return_code`, `started_at`, `completed_at`, `stdout_file`, `stderr_file`, `exit_code_file`, and `artifact_sha256`.
 
-- The record must not include `arguments` or any other key. `tool` and `command` must both be `run-starskill`.
-- `case_id`, `case_kind`, `worker_role`, `task_path`, and `workflow` must exactly match the assigned case manifest; `worker_role` must be the canonical role named by that manifest. `task_path` uses the manifest's absolute path representation.
-- `run_dir` and `output_dir` are the same absolute path of the actual run directory. `stdout_file`, `stderr_file`, and `response_file` are absolute paths to captured files within that directory. `return_code` is the observed process exit code.
-- `result` is a nested `result` object with exactly `return_code`, `output_dir`, `stdout_file`, `stderr_file`, and `response_file`, and each value must repeat its linked top-level value.
+- `recorder` is `starskill.evaluation.runner`, and `schema_version` is `1`.
+- The case identity, role, workflow, copied `task_path`, run directory, and working directory must match the manifest and script contract.
+- `command_argv` is the actual absolute interpreter command; replay accepts only the command shape generated for that workflow.
+- `return_code` must equal the numeric value in `exit_code_file`; `stdout_file` and `stderr_file` must remain in the run directory.
+- `artifact_sha256` binds every pre-record file to its SHA-256 digest. Codex-native tool history, when available, is external platform evidence and is not substituted for this script record.
 
-The harness does not create child Agents inside this repository and does not call an LLM API through this CLI contract. It must inspect actual files and exit codes rather than trusting natural-language summaries. Do not fabricate coordinates, image outputs, provenance, cache behavior, success states, or missing files. Preserve structured failures and degraded states exactly as produced.
+Do not fabricate coordinates, image outputs, provenance, cache behavior, success states, or missing files. Preserve structured failures and degraded states exactly as produced.
 
 ## Review Checklist
 

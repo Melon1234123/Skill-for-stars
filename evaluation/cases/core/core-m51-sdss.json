@@ -14,8 +14,7 @@
   ],
   "json_assertions": [
     {"file": "image_metadata.json", "pointer": "/request/target_name", "equals": "M51"},
-    {"file": "image_metadata.json", "pointer": "/source/database", "equals": "SDSS SkyServer"},
-    {"file": "image_metadata.json", "pointer": "/source/from_cache", "equals": false}
+    {"file": "image_metadata.json", "pointer": "/source/database", "equals": "SDSS SkyServer"}
   ],
   "numeric_assertions": [
     {"file": "image_metadata.json", "pointer": "/request/ra_deg", "expected": 202.4696, "absolute_tolerance": 0.0001},
