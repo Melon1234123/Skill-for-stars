@@ -267,3 +267,82 @@ class PublicImageResult(InputModel):
     source_path: str
     display_path: str
     processing_steps: list[str]
+
+
+ExternalAvailability = Literal["fresh", "cached", "unavailable", "stale"]
+
+
+class ExternalSource(InputModel):
+    provider: str
+    source_url: str | None = None
+    accessed_at: datetime
+    from_cache: bool
+    availability: ExternalAvailability
+    issue_code: str | None = None
+
+
+class ObservingConditionsRequest(InputModel):
+    observer: Observer
+    time_range: TimeRange
+
+
+class WeatherSample(InputModel):
+    timestamp_local: datetime
+    cloud_cover_percent: float | None = Field(default=None, ge=0, le=100)
+    precipitation_mm: float | None = Field(default=None, ge=0)
+    wind_speed_kmh: float | None = Field(default=None, ge=0)
+    visibility_m: float | None = Field(default=None, ge=0)
+
+
+class WeatherForecast(InputModel):
+    samples: list[WeatherSample]
+    source: ExternalSource
+
+
+class LightPollutionResult(InputModel):
+    radiance: float | None = Field(default=None, ge=0)
+    unit: str | None = None
+    dataset_id: str | None = None
+    dataset_version: str | None = None
+    sample_period: str | None = None
+    spatial_resolution: str | None = None
+    interpolation: str | None = None
+    source: ExternalSource
+
+
+class NasaFeature(InputModel):
+    date: str | None = None
+    title: str | None = None
+    media_type: str | None = None
+    media_url: str | None = None
+    explanation: str | None = None
+    copyright: str | None = None
+    source: ExternalSource
+
+
+class TonightRecommendationRequest(InputModel):
+    task: ObservationTask
+    min_target_altitude_deg: float = Field(default=30.0, ge=-90, le=90)
+    max_sun_altitude_deg: float = Field(default=-12.0, ge=-90, le=90)
+
+
+class RecommendationWindow(InputModel):
+    start_local: datetime
+    end_local: datetime
+    grade: Literal["recommended", "caution", "not_recommended"]
+    reasons: list[str] = Field(min_length=1)
+
+
+class TonightRecommendationResult(InputModel):
+    geometry: ObservationPlanResult
+    weather_forecast: WeatherForecast
+    light_pollution: LightPollutionResult
+    recommendations: list[RecommendationWindow]
+    human_review: list[str] = Field(min_length=1)
+    provenance: list[ExternalSource]
+
+
+class StellariumSyncRequest(InputModel):
+    observer: Observer
+    timestamp: datetime
+    target: str

@@ -4,7 +4,11 @@ from datetime import datetime
 import pytest
 from pydantic import ValidationError
 
-from starskill.schemas import ObservationTask
+from starskill.schemas import (
+    ObservingConditionsRequest,
+    ObservationTask,
+    TonightRecommendationRequest,
+)
 
 
 @pytest.fixture
@@ -103,3 +107,23 @@ def test_unknown_input_fields_are_rejected(valid_payload: dict) -> None:
 
     with pytest.raises(ValidationError, match="targte"):
         ObservationTask.model_validate(payload)
+
+
+def test_tonight_request_has_conservative_defaults(valid_payload: dict) -> None:
+    request = TonightRecommendationRequest.model_validate({"task": valid_payload})
+
+    assert request.min_target_altitude_deg == 30.0
+    assert request.max_sun_altitude_deg == -12.0
+
+
+def test_conditions_request_rejects_an_empty_time_range(valid_payload: dict) -> None:
+    with pytest.raises(ValidationError, match="end"):
+        ObservingConditionsRequest.model_validate(
+            {
+                "observer": valid_payload["observer"],
+                "time_range": {
+                    "start": "2026-01-10T20:00:00+08:00",
+                    "end": "2026-01-10T20:00:00+08:00",
+                },
+            }
+        )
