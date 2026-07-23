@@ -12,6 +12,7 @@ from pydantic import ValidationError
 
 import starskill.cli as cli
 from starskill.cli import main
+from starskill.sky_chart_catalog import CatalogDownloadError
 from tests.fixtures.m42 import write_m42_ephemeris, write_m42_target
 
 
@@ -520,3 +521,95 @@ def test_resolve_command_returns_structured_service_error(
     assert exit_code == 4
     assert output["resolved"] is False
     assert output["error"] == "target_service_error"
+
+
+def test_sky_chart_help_and_port_bounds(capsys) -> None:
+    with pytest.raises(SystemExit) as help_exit:
+        main(["sky-chart", "--help"])
+    assert help_exit.value.code == 0
+    assert "--port" in capsys.readouterr().out
+
+    with pytest.raises(SystemExit) as port_exit:
+        main(["sky-chart", "--port", "1023"])
+    assert port_exit.value.code == 2
+
+
+def test_download_catalog_does_not_start_web_server(
+    tmp_path, monkeypatch, capsys
+) -> None:
+    started = []
+    monkeypatch.setattr(cli, "run_web_server", lambda **kwargs: started.append(kwargs))
+    monkeypatch.setattr(
+        cli,
+        "download_full_catalog",
+        lambda cache_dir: {
+            "downloaded": True,
+            "version": "4.1",
+            "row_count": 100001,
+            "compressed_sha256": "a" * 64,
+            "csv_sha256": "b" * 64,
+            "cache_status": "available",
+        },
+    )
+
+    assert (
+        main(
+            [
+                "sky-chart",
+                "--download-catalog",
+                "--catalog-cache-dir",
+                str(tmp_path),
+            ]
+        )
+        == 0
+    )
+
+    assert json.loads(capsys.readouterr().out)["downloaded"] is True
+    assert started == []
+
+
+def test_download_catalog_failure_is_stable_and_does_not_start_web_server(
+    tmp_path, monkeypatch, capsys
+) -> None:
+    started = []
+    monkeypatch.setattr(cli, "run_web_server", lambda **kwargs: started.append(kwargs))
+
+    def fail_download(_cache_dir: Path) -> dict[str, object]:
+        raise CatalogDownloadError("https://fixed.example/private/cache")
+
+    monkeypatch.setattr(cli, "download_full_catalog", fail_download)
+
+    assert main(["sky-chart", "--download-catalog", "--catalog-cache-dir", str(tmp_path)]) == 1
+
+    captured = capsys.readouterr()
+    assert json.loads(captured.err) == {
+        "downloaded": False,
+        "error": "catalog_download_failed",
+    }
+    assert "private" not in captured.err
+    assert started == []
+
+
+def test_sky_chart_passes_only_loopback_port_and_open_flag(monkeypatch) -> None:
+    observed = []
+    monkeypatch.setattr(cli, "run_web_server", lambda **kwargs: observed.append(kwargs))
+
+    assert main(["sky-chart", "--port", "8123", "--open"]) == 0
+
+    assert observed == [{"port": 8123, "open_browser": True}]
+
+
+def test_sky_chart_server_start_failure_is_stable(monkeypatch, capsys) -> None:
+    def fail_server(**_kwargs: object) -> None:
+        raise OSError("bind failed at /private/socket")
+
+    monkeypatch.setattr(cli, "run_web_server", fail_server)
+
+    assert main(["sky-chart"]) == 1
+
+    captured = capsys.readouterr()
+    assert json.loads(captured.err) == {
+        "started": False,
+        "error": "web_server_start_failed",
+    }
+    assert "private" not in captured.err

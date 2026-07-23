@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterable, Sequence
 from contextlib import asynccontextmanager
 from datetime import date, datetime
 from importlib.resources import files
@@ -28,7 +28,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from starskill.mcp_server import StarSkillMcpService, service_from_environment
 from starskill.schemas import SkyChartRenderResponse, SkyChartRequest
 from starskill.sky_chart import RenderStore, SkyChartService
-from starskill.sky_chart_catalog import FullCatalogUnavailableError
+from starskill.sky_chart_catalog import CatalogDownloadError, FullCatalogUnavailableError
 
 
 MAX_REQUEST_BODY_BYTES = 1024 * 1024
@@ -342,6 +342,34 @@ def default_web_app() -> FastAPI:
 def get_health_status(url: str) -> int:
     with urlopen(url, timeout=1) as response:
         return int(response.status)
+
+
+class HttpCatalogFetcher:
+    """Stream the already-validated fixed catalog source over HTTPS."""
+
+    def stream(
+        self, url: str, *, max_bytes: int
+    ) -> tuple[int, dict[str, str], Iterable[bytes]]:
+        del max_bytes
+        try:
+            response = urlopen(url, timeout=30)
+        except OSError as error:
+            raise CatalogDownloadError("catalog download request failed") from error
+
+        status = int(response.status)
+        headers = {str(name): str(value) for name, value in response.headers.items()}
+        if status != 200:
+            response.close()
+            return status, headers, ()
+
+        def chunks() -> Iterable[bytes]:
+            try:
+                while chunk := response.read(64 * 1024):
+                    yield chunk
+            finally:
+                response.close()
+
+        return status, headers, chunks()
 
 
 def run_web_server(

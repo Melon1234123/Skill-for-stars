@@ -42,6 +42,11 @@ from starskill.solar_system_relationship import (
     write_relationship_csv,
     write_relationship_json,
 )
+from starskill.sky_chart_catalog import (
+    CatalogDownloadError,
+    FullCatalogCache,
+    load_hyg_source,
+)
 from starskill.target_resolver import (
     InvalidTargetNameError,
     SimbadBackend,
@@ -50,6 +55,7 @@ from starskill.target_resolver import (
     resolve_target,
 )
 from starskill.visualizer import plot_visibility
+from starskill.web_api import HttpCatalogFetcher, run_web_server
 
 
 def print_resolution_error(
@@ -97,6 +103,21 @@ def print_public_data_error(exc: PublicDataError) -> None:
         ),
         file=sys.stderr,
     )
+
+
+def download_full_catalog(cache_dir: Path) -> dict[str, object]:
+    """Download and publish the one fixed HYG source without exposing its URL."""
+    summary = FullCatalogCache(cache_dir, load_hyg_source()).download_and_publish(
+        HttpCatalogFetcher()
+    )
+    return {
+        "downloaded": True,
+        "version": summary.version,
+        "row_count": summary.row_count,
+        "compressed_sha256": summary.compressed_sha256,
+        "csv_sha256": summary.csv_sha256,
+        "cache_status": summary.status,
+    }
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -152,7 +173,47 @@ def main(argv: Sequence[str] | None = None) -> int:
     image_parser.add_argument("--output-dir", type=Path, required=True)
     image_parser.add_argument("--cache-dir", type=Path, default=Path("cache/sdss"))
 
+    sky_chart_parser = commands.add_parser(
+        "sky-chart", help="start the local Python sky chart"
+    )
+    sky_chart_parser.add_argument("--port", type=int, default=8000)
+    sky_chart_parser.add_argument("--open", action="store_true")
+    sky_chart_parser.add_argument("--download-catalog", action="store_true")
+    sky_chart_parser.add_argument(
+        "--catalog-cache-dir", type=Path, default=Path("cache/sky-chart")
+    )
+
     args = parser.parse_args(argv)
+
+    if args.command == "sky-chart":
+        if not 1024 <= args.port <= 65535:
+            parser.error("--port must be between 1024 and 65535")
+        if args.download_catalog:
+            try:
+                summary = download_full_catalog(args.catalog_cache_dir)
+            except CatalogDownloadError:
+                print(
+                    json.dumps(
+                        {"downloaded": False, "error": "catalog_download_failed"},
+                        ensure_ascii=False,
+                    ),
+                    file=sys.stderr,
+                )
+                return 1
+            print(json.dumps(summary, ensure_ascii=False))
+            return 0
+        try:
+            run_web_server(port=args.port, open_browser=args.open)
+        except (OSError, RuntimeError):
+            print(
+                json.dumps(
+                    {"started": False, "error": "web_server_start_failed"},
+                    ensure_ascii=False,
+                ),
+                file=sys.stderr,
+            )
+            return 1
+        return 0
 
     if args.command == "resolve":
         try:
