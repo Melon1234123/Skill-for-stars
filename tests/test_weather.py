@@ -191,6 +191,32 @@ def test_weather_provider_reports_mismatched_hourly_arrays_as_unavailable(
     assert result.source.issue_code == ExternalDataFormatError.code
 
 
+def test_weather_provider_reports_invalid_numeric_values_as_unavailable(
+    tmp_path: Path,
+) -> None:
+    from starskill.weather import OpenMeteoWeatherProvider
+
+    result = OpenMeteoWeatherProvider(
+        backend=StaticJsonBackend(
+            {
+                "hourly": {
+                    "time": ["2026-01-10T20:00"],
+                    "cloud_cover": [101],
+                    "precipitation": [0.0],
+                    "wind_speed_10m": [7.2],
+                    "visibility": [-1],
+                }
+            }
+        ),
+        cache_dir=tmp_path,
+        clock=fixed_clock,
+    ).get_forecast(make_conditions_request())
+
+    assert result.samples == []
+    assert result.source.availability == "unavailable"
+    assert result.source.issue_code == ExternalDataFormatError.code
+
+
 def test_weather_provider_refreshes_an_expired_cache(tmp_path: Path) -> None:
     from starskill.weather import OpenMeteoWeatherProvider
 

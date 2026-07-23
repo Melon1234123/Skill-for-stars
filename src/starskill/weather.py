@@ -8,6 +8,8 @@ from typing import Any
 from urllib.parse import urlencode
 from zoneinfo import ZoneInfo
 
+from pydantic import ValidationError
+
 from .external_data import (
     ExternalDataError,
     ExternalDataFormatError,
@@ -134,7 +136,7 @@ class OpenMeteoWeatherProvider:
                     )
                 )
             return samples
-        except (KeyError, TypeError, ValueError) as exc:
+        except (KeyError, TypeError, ValidationError, ValueError) as exc:
             raise ExternalDataFormatError("invalid Open-Meteo hourly forecast response") from exc
 
     @staticmethod
