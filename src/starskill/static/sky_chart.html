@@ -1,0 +1,680 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>StarSkill Sky Chart</title>
+  <style>
+    :root {
+      --ink: #071216;
+      --deep: #10262b;
+      --fog: #d4ded9;
+      --paper: #f1efe7;
+      --brass: #d4a74f;
+      --coral: #d96f5d;
+      --teal: #328f86;
+      --muted: #64716f;
+      --line: #aebbb6;
+      --radius: 6px;
+    }
+
+    * {
+      box-sizing: border-box;
+      letter-spacing: 0;
+    }
+
+    html,
+    body {
+      min-height: 100%;
+      margin: 0;
+    }
+
+    body {
+      background: var(--fog);
+      color: var(--ink);
+      font-family: "Avenir Next", "Segoe UI", sans-serif;
+      font-size: 14px;
+    }
+
+    button,
+    input,
+    select {
+      font: inherit;
+    }
+
+    button,
+    input,
+    select,
+    a {
+      border-radius: var(--radius);
+    }
+
+    :focus-visible {
+      outline: 3px solid var(--coral);
+      outline-offset: 2px;
+    }
+
+    .app-shell {
+      display: grid;
+      grid-template-columns: minmax(320px, 390px) minmax(0, 1fr);
+      min-height: 100vh;
+    }
+
+    .control-rail {
+      background: var(--paper);
+      border-right: 1px solid var(--line);
+      padding: 24px;
+      overflow-y: auto;
+    }
+
+    .brand {
+      border-bottom: 2px solid var(--ink);
+      margin-bottom: 20px;
+      padding-bottom: 15px;
+    }
+
+    .brand-kicker,
+    .section-label,
+    .data-readout {
+      font-family: ui-monospace, "SFMono-Regular", Menlo, monospace;
+    }
+
+    .brand-kicker {
+      color: var(--teal);
+      font-size: 12px;
+      font-weight: 700;
+      margin: 0 0 5px;
+      text-transform: uppercase;
+    }
+
+    h1 {
+      font-family: Georgia, "Times New Roman", serif;
+      font-size: 30px;
+      font-weight: 500;
+      line-height: 1.05;
+      margin: 0;
+    }
+
+    .control-section {
+      border-bottom: 1px solid var(--line);
+      margin-bottom: 18px;
+      padding-bottom: 18px;
+    }
+
+    .section-label {
+      color: var(--muted);
+      display: block;
+      font-size: 11px;
+      font-weight: 700;
+      margin: 0 0 11px;
+      text-transform: uppercase;
+    }
+
+    .field-grid {
+      display: grid;
+      gap: 11px;
+    }
+
+    .field-grid.coordinates {
+      grid-template-columns: 1fr 1fr;
+    }
+
+    label,
+    legend {
+      color: var(--deep);
+      display: block;
+      font-size: 12px;
+      font-weight: 700;
+      margin-bottom: 5px;
+    }
+
+    fieldset {
+      border: 0;
+      margin: 0;
+      min-width: 0;
+      padding: 0;
+    }
+
+    input[type="text"],
+    input[type="number"],
+    input[type="datetime-local"],
+    select {
+      background: #ffffff;
+      border: 1px solid var(--line);
+      color: var(--ink);
+      min-height: 38px;
+      padding: 8px 10px;
+      width: 100%;
+    }
+
+    .mode-switch {
+      background: #dfe5e0;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      margin-bottom: 11px;
+      padding: 3px;
+    }
+
+    .mode-switch label {
+      cursor: pointer;
+      margin: 0;
+      position: relative;
+      text-align: center;
+    }
+
+    .mode-switch input {
+      inset: 0;
+      opacity: 0;
+      position: absolute;
+    }
+
+    .mode-switch span {
+      border-radius: 4px;
+      display: block;
+      padding: 7px 9px;
+    }
+
+    .mode-switch input:checked + span {
+      background: var(--ink);
+      color: #ffffff;
+    }
+
+    .time-row {
+      align-items: center;
+      display: flex;
+      gap: 10px;
+    }
+
+    input[type="range"] {
+      accent-color: var(--coral);
+      cursor: ew-resize;
+      flex: 1;
+      min-width: 0;
+    }
+
+    .data-readout {
+      color: var(--coral);
+      font-size: 12px;
+      min-width: 54px;
+      text-align: right;
+    }
+
+    .update-button {
+      background: var(--brass);
+      border: 1px solid #9d772c;
+      color: var(--ink);
+      cursor: pointer;
+      font-weight: 800;
+      min-height: 42px;
+      width: 100%;
+    }
+
+    .update-button:hover {
+      background: #e1bd72;
+    }
+
+    .chart-workspace {
+      background: var(--ink);
+      color: #eef4f1;
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+      padding: 24px 30px 28px;
+    }
+
+    .workspace-header {
+      align-items: end;
+      border-bottom: 1px solid #385158;
+      display: flex;
+      gap: 20px;
+      justify-content: space-between;
+      min-height: 54px;
+      padding-bottom: 13px;
+    }
+
+    .workspace-header h2 {
+      font-family: Georgia, "Times New Roman", serif;
+      font-size: 22px;
+      font-weight: 500;
+      margin: 0;
+    }
+
+    .status {
+      color: #b8c9c5;
+      font-size: 12px;
+      line-height: 1.45;
+      margin: 0;
+      max-width: 520px;
+      text-align: right;
+    }
+
+    .status[data-state="error"] {
+      color: #ff9d8d;
+    }
+
+    .status[data-state="ready"] {
+      color: #78d4c7;
+    }
+
+    .chart-stage {
+      align-items: center;
+      display: flex;
+      flex: 1;
+      justify-content: center;
+      min-height: 420px;
+      padding: 22px 0;
+    }
+
+    .chart-frame {
+      aspect-ratio: 4 / 3;
+      background: #000000;
+      border: 1px solid #31484e;
+      max-height: calc(100vh - 170px);
+      max-width: 1200px;
+      overflow: hidden;
+      position: relative;
+      width: 100%;
+    }
+
+    .chart-frame img {
+      display: block;
+      height: 100%;
+      object-fit: contain;
+      width: 100%;
+    }
+
+    .empty-state {
+      align-items: center;
+      color: #7f9698;
+      display: flex;
+      font-family: Georgia, "Times New Roman", serif;
+      font-size: 18px;
+      inset: 0;
+      justify-content: center;
+      position: absolute;
+    }
+
+    .chart-frame img[src] + .empty-state {
+      display: none;
+    }
+
+    .export-bar {
+      align-items: center;
+      border-top: 1px solid #385158;
+      display: flex;
+      gap: 10px;
+      justify-content: flex-end;
+      padding-top: 13px;
+    }
+
+    .export-bar a {
+      border: 1px solid #60787d;
+      color: #eef4f1;
+      font-size: 12px;
+      padding: 7px 11px;
+      text-decoration: none;
+    }
+
+    .export-bar a[aria-disabled="true"] {
+      color: #65777a;
+      cursor: default;
+      pointer-events: none;
+    }
+
+    [hidden] {
+      display: none !important;
+    }
+
+    @media (max-width: 860px) {
+      .app-shell {
+        grid-template-columns: 1fr;
+      }
+
+      .control-rail {
+        border-bottom: 1px solid var(--line);
+        border-right: 0;
+        overflow: visible;
+      }
+
+      .chart-workspace {
+        min-height: 620px;
+        padding: 22px 18px;
+      }
+
+      .chart-frame {
+        max-height: none;
+      }
+    }
+
+    @media (max-width: 520px) {
+      .control-rail {
+        padding: 18px;
+      }
+
+      .field-grid.coordinates,
+      .workspace-header {
+        display: grid;
+        grid-template-columns: 1fr;
+      }
+
+      .status {
+        text-align: left;
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *,
+      *::before,
+      *::after {
+        scroll-behavior: auto !important;
+        transition-duration: 0.01ms !important;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="app-shell">
+    <aside class="control-rail" aria-label="星图参数">
+      <header class="brand">
+        <p class="brand-kicker">Local observing desk</p>
+        <h1>StarSkill<br>Sky Chart</h1>
+      </header>
+
+      <form id="sky-chart-form">
+        <section class="control-section" aria-labelledby="observer-label">
+          <h2 class="section-label" id="observer-label">Observer / 观测地</h2>
+          <div class="field-grid">
+            <div>
+              <label for="location-name">地点名称</label>
+              <input id="location-name" type="text" value="北京" maxlength="80" required>
+            </div>
+            <div class="field-grid coordinates">
+              <div>
+                <label for="longitude">经度</label>
+                <input id="longitude" type="number" value="116.4074" min="-180" max="180" step="0.0001" required>
+              </div>
+              <div>
+                <label for="latitude">纬度</label>
+                <input id="latitude" type="number" value="39.9042" min="-90" max="90" step="0.0001" required>
+              </div>
+            </div>
+            <div>
+              <label for="timezone">IANA 时区</label>
+              <input id="timezone" type="text" value="Asia/Shanghai" required>
+            </div>
+          </div>
+        </section>
+
+        <section class="control-section" aria-labelledby="time-label">
+          <h2 class="section-label" id="time-label">Time / 时刻</h2>
+          <label for="timestamp-local">当地日期时间</label>
+          <input id="timestamp-local" type="datetime-local" step="60" required>
+          <div class="time-row">
+            <input id="time-slider" type="range" min="-720" max="720" step="15" value="0" aria-label="前后十二小时">
+            <output class="data-readout" id="time-offset" for="time-slider">+0m</output>
+          </div>
+        </section>
+
+        <section class="control-section" aria-labelledby="target-label">
+          <h2 class="section-label" id="target-label">Target / 目标</h2>
+          <fieldset>
+            <legend>输入方式</legend>
+            <div class="mode-switch">
+              <label>
+                <input type="radio" name="target-mode" value="name" checked>
+                <span>名称</span>
+              </label>
+              <label>
+                <input type="radio" name="target-mode" value="coordinates">
+                <span>RA / Dec</span>
+              </label>
+            </div>
+          </fieldset>
+          <div id="name-target-fields">
+            <label for="target-name">目标名称</label>
+            <input id="target-name" type="text" value="M42" maxlength="120" required>
+          </div>
+          <div class="field-grid coordinates" id="coordinate-target-fields" hidden>
+            <div>
+              <label for="target-ra">RA (deg)</label>
+              <input id="target-ra" type="number" min="0" max="359.999999" step="0.000001">
+            </div>
+            <div>
+              <label for="target-dec">Dec (deg)</label>
+              <input id="target-dec" type="number" min="-90" max="90" step="0.000001">
+            </div>
+          </div>
+        </section>
+
+        <section class="control-section" aria-labelledby="catalog-label">
+          <h2 class="section-label" id="catalog-label">Catalog / 星表</h2>
+          <label for="catalog-mode">星表模式</label>
+          <select id="catalog-mode">
+            <option value="auto" selected>Auto</option>
+            <option value="bundled">Bundled</option>
+            <option value="full">Full</option>
+          </select>
+        </section>
+
+        <button class="update-button" type="submit">更新星图</button>
+      </form>
+    </aside>
+
+    <section class="chart-workspace" aria-labelledby="chart-heading">
+      <header class="workspace-header">
+        <h2 id="chart-heading">Local sky / 本地星空</h2>
+        <p class="status" id="status" aria-live="polite">正在准备星图...</p>
+      </header>
+      <div class="chart-stage">
+        <div class="chart-frame">
+          <img id="sky-chart-image" alt="当前观测参数生成的星图">
+          <div class="empty-state">Awaiting first render</div>
+        </div>
+      </div>
+      <nav class="export-bar" aria-label="导出">
+        <a id="export-png" aria-disabled="true">PNG</a>
+        <a id="export-json" aria-disabled="true">JSON</a>
+      </nav>
+    </section>
+  </main>
+
+  <script>
+    (() => {
+      "use strict";
+
+      const renderEndpoint = "/v1/sky-chart/render";
+      const serverTimestamp = "__DEFAULT_TIMESTAMP_LOCAL__";
+      const form = document.getElementById("sky-chart-form");
+      const timestampInput = document.getElementById("timestamp-local");
+      const timezoneInput = document.getElementById("timezone");
+      const slider = document.getElementById("time-slider");
+      const offsetOutput = document.getElementById("time-offset");
+      const status = document.getElementById("status");
+      const chartImage = document.getElementById("sky-chart-image");
+      const pngExport = document.getElementById("export-png");
+      const jsonExport = document.getElementById("export-json");
+      const nameFields = document.getElementById("name-target-fields");
+      const coordinateFields = document.getElementById("coordinate-target-fields");
+      const targetName = document.getElementById("target-name");
+      const targetRa = document.getElementById("target-ra");
+      const targetDec = document.getElementById("target-dec");
+      let baseTimestamp = Date.parse(serverTimestamp);
+      let debounceTimer = null;
+      let activeRequest = null;
+
+      timestampInput.value = serverTimestamp.slice(0, 16);
+
+      function zoneOffsetMinutes(date, timeZone) {
+        const formatter = new Intl.DateTimeFormat("en-US", {
+          timeZone,
+          timeZoneName: "longOffset",
+          year: "numeric"
+        });
+        const value = formatter.formatToParts(date).find((part) => part.type === "timeZoneName").value;
+        if (value === "GMT") {
+          return 0;
+        }
+        const match = /^GMT([+-])(\d{2}):(\d{2})$/.exec(value);
+        if (!match) {
+          throw new RangeError("Invalid time zone offset");
+        }
+        const minutes = Number(match[2]) * 60 + Number(match[3]);
+        return match[1] === "+" ? minutes : -minutes;
+      }
+
+      function formatOffset(minutes) {
+        const sign = minutes >= 0 ? "+" : "-";
+        const absolute = Math.abs(minutes);
+        return `${sign}${String(Math.floor(absolute / 60)).padStart(2, "0")}:${String(absolute % 60).padStart(2, "0")}`;
+      }
+
+      function offsetIso(localValue, timeZone) {
+        const wallClockUtc = Date.parse(`${localValue}:00Z`);
+        let instant = wallClockUtc;
+        for (let index = 0; index < 3; index += 1) {
+          const offset = zoneOffsetMinutes(new Date(instant), timeZone);
+          instant = wallClockUtc - offset * 60000;
+        }
+        const offset = zoneOffsetMinutes(new Date(instant), timeZone);
+        return `${localValue}:00${formatOffset(offset)}`;
+      }
+
+      function localInputValue(date, timeZone) {
+        const formatter = new Intl.DateTimeFormat("en-CA", {
+          timeZone,
+          year: "numeric",
+          month: "2-digit",
+          day: "2-digit",
+          hour: "2-digit",
+          minute: "2-digit",
+          hourCycle: "h23"
+        });
+        const parts = Object.fromEntries(
+          formatter.formatToParts(date).map((part) => [part.type, part.value])
+        );
+        return `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}`;
+      }
+
+      function currentTargetMode() {
+        return form.elements["target-mode"].value;
+      }
+
+      function setTargetMode() {
+        const coordinates = currentTargetMode() === "coordinates";
+        nameFields.hidden = coordinates;
+        coordinateFields.hidden = !coordinates;
+        targetName.required = !coordinates;
+        targetRa.required = coordinates;
+        targetDec.required = coordinates;
+      }
+
+      function buildPayload() {
+        const mode = currentTargetMode();
+        const target = mode === "name"
+          ? {mode: "name", name: targetName.value}
+          : {mode: "coordinates", ra_deg: Number(targetRa.value), dec_deg: Number(targetDec.value)};
+        return {
+          observer: {
+            location_name: document.getElementById("location-name").value,
+            longitude: Number(document.getElementById("longitude").value),
+            latitude: Number(document.getElementById("latitude").value),
+            timezone: timezoneInput.value
+          },
+          timestamp_local: offsetIso(timestampInput.value, timezoneInput.value),
+          target,
+          catalog_mode: document.getElementById("catalog-mode").value
+        };
+      }
+
+      function setExports(pngUrl, jsonUrl) {
+        pngExport.href = pngUrl;
+        jsonExport.href = jsonUrl;
+        pngExport.setAttribute("aria-disabled", "false");
+        jsonExport.setAttribute("aria-disabled", "false");
+      }
+
+      function warningMessage(warnings) {
+        const messages = {
+          catalog_degraded: "完整星表不可用，已使用随包亮星表。",
+          target_unresolved: "目标未解析，星图未绘制目标标记。",
+          target_resolution_unavailable: "目标解析暂不可用，星图未绘制目标标记。"
+        };
+        return warnings.map((warning) => messages[warning] || warning).join(" ");
+      }
+
+      async function renderChart() {
+        if (!form.reportValidity()) {
+          return;
+        }
+        if (activeRequest) {
+          activeRequest.abort();
+        }
+        activeRequest = new AbortController();
+        status.dataset.state = "loading";
+        status.textContent = "正在更新星图...";
+        try {
+          const response = await fetch(renderEndpoint, {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify(buildPayload()),
+            signal: activeRequest.signal
+          });
+          const body = await response.json();
+          if (!response.ok) {
+            const serverMessage = typeof body.detail === "string" ? body.detail : "星图暂时不可用";
+            status.dataset.state = "error";
+            status.textContent = serverMessage;
+            return;
+          }
+          const renderBase = `/v1/sky-chart/renders/${body.render_id}`;
+          chartImage.src = `${renderBase}.png`;
+          setExports(`${renderBase}.png`, `${renderBase}.json`);
+          const warning = warningMessage(body.warnings || []);
+          status.dataset.state = "ready";
+          status.textContent = warning || `已生成 ${body.catalog_mode_used} 星表星图`;
+        } catch (error) {
+          if (error.name !== "AbortError") {
+            status.dataset.state = "error";
+            status.textContent = "星图暂时不可用。";
+          }
+        }
+      }
+
+      function resetTimeWindow() {
+        slider.value = "0";
+        offsetOutput.value = "+0m";
+        try {
+          baseTimestamp = Date.parse(offsetIso(timestampInput.value, timezoneInput.value));
+        } catch (_error) {
+          status.dataset.state = "error";
+          status.textContent = "IANA 时区无效。";
+        }
+      }
+
+      form.addEventListener("submit", (event) => {
+        event.preventDefault();
+        renderChart();
+      });
+
+      timestampInput.addEventListener("change", resetTimeWindow);
+      timezoneInput.addEventListener("change", resetTimeWindow);
+      form.elements["target-mode"].forEach((input) => input.addEventListener("change", setTargetMode));
+      slider.addEventListener("input", () => {
+        const minutes = Number(slider.value);
+        timestampInput.value = localInputValue(
+          new Date(baseTimestamp + minutes * 60000),
+          timezoneInput.value
+        );
+        offsetOutput.value = `${minutes >= 0 ? "+" : ""}${minutes}m`;
+        window.clearTimeout(debounceTimer);
+        debounceTimer = window.setTimeout(renderChart, 250);
+      });
+
+      setTargetMode();
+      renderChart();
+    })();
+  </script>
+</body>
+</html>
