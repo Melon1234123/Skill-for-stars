@@ -22,6 +22,11 @@ class FailingJsonBackend:
         raise ExternalDataNetworkError("service unavailable")
 
 
+class OSErrorJsonBackend:
+    def fetch_json(self, url: str, *, timeout_seconds: int, max_bytes: int) -> dict:
+        raise OSError("connection reset")
+
+
 def fixed_clock() -> datetime:
     return datetime(2026, 1, 10, 12, tzinfo=timezone.utc)
 
@@ -121,3 +126,21 @@ def test_apod_malformed_or_failed_response_is_unavailable(tmp_path: Path) -> Non
     assert malformed.source.issue_code == "external_data_invalid_response"
     assert failed.source.availability == "unavailable"
     assert failed.source.issue_code == "external_data_network_error"
+
+
+def test_apod_maps_backend_os_error_to_an_unavailable_result(tmp_path: Path) -> None:
+    from starskill.nasa import NasaApodProvider
+
+    result = NasaApodProvider(
+        api_key="test-key",
+        backend=OSErrorJsonBackend(),
+        cache_dir=tmp_path,
+        clock=fixed_clock,
+    ).get_feature("2026-01-10")
+
+    assert result.source.provider == "NASA APOD"
+    assert result.source.source_url == "https://api.nasa.gov/planetary/apod?date=2026-01-10"
+    assert result.source.accessed_at == fixed_clock()
+    assert result.source.from_cache is False
+    assert result.source.availability == "unavailable"
+    assert result.source.issue_code == "external_data_network_error"

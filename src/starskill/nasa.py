@@ -11,6 +11,7 @@ from urllib.parse import urlencode
 from .external_data import (
     ExternalDataError,
     ExternalDataFormatError,
+    ExternalDataNetworkError,
     JsonBackend,
     UrlJsonBackend,
     read_cache_record,
@@ -66,6 +67,13 @@ class NasaApodProvider:
                 max_bytes=NASA_APOD_MAX_BYTES,
             )
             feature = self._feature(payload, source_url, now, from_cache=False, availability="fresh")
+        except OSError:
+            return self._unavailable(
+                source_url,
+                now,
+                False,
+                ExternalDataNetworkError.code,
+            )
         except ExternalDataError as error:
             return self._unavailable(source_url, now, False, error.code)
 
