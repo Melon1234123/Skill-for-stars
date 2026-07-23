@@ -17,6 +17,7 @@
 - NASA credentials use `STARSKILL_NASA_API_KEY` only and never enter logs or artifacts.
 - Stellarium defaults to `http://127.0.0.1:8090`; non-loopback access requires explicit configuration.
 - Recommendations always include weather, horizon, equipment, and safety human-review items.
+- A clean `git clone` plus README-declared Python, Node, and Docker prerequisites must start the local core without existing caches, absolute paths, API keys, data snapshots, or a desktop Stellarium installation.
 
 ---
 
@@ -469,7 +470,7 @@ Run `git add src/starskill/web_api.py tests/test_web_api.py README.md pyproject.
 
 - [ ] **Step 1: Document exact configuration names**
 
-Document cloning, Python installation, `npm --prefix web install`, `make -C web engine`, `npm --prefix web run build`, and `starskill-web`. Document `STARSKILL_NASA_API_KEY`, `STARSKILL_LIGHT_POLLUTION_SNAPSHOT`, and `STARSKILL_STELLARIUM_BASE_URL` as optional enhancements; core local star map, geometry, and weather work without them, while unavailable NASA/light panels remain explicit.
+Document the repository clone command, Python installation, `npm --prefix web install`, `make -C web engine`, `npm --prefix web run build`, and `starskill-web`. Document `STARSKILL_NASA_API_KEY`, `STARSKILL_LIGHT_POLLUTION_SNAPSHOT`, and `STARSKILL_STELLARIUM_BASE_URL` as optional enhancements; core local star map, geometry, and weather work without them, while unavailable NASA/light panels remain explicit.
 
 - [ ] **Step 2: Run all offline provider and transport tests**
 
@@ -482,6 +483,10 @@ Expected: PASS without public requests.
 Run: `pytest -q`
 
 Expected: PASS.
+
+- [ ] **Step 3a: Add the fresh-clone acceptance procedure to README**
+
+Document and execute this procedure in a temporary directory after browser Task 5 is complete: create `starskill_clone_dir=$(mktemp -d)`, clone the documented repository URL into it, create its virtual environment, install project and Web dependencies, build engine and Web assets, then start `starskill-web`. Verify `curl -fsS http://127.0.0.1:<documented-port>/healthz` returns a healthy JSON response and opening `/` serves the browser entry page. Do not copy cache, runs, `.env`, a light snapshot, or a Stellarium configuration into the clone.
 
 - [ ] **Step 4: Run an opt-in APOD smoke test**
 

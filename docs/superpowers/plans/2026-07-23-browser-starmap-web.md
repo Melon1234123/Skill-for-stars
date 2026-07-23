@@ -17,6 +17,7 @@
 - Render fresh, cached, stale, and unavailable provider states with source time. Never display a prior success as current.
 - Browser calls only the Web API. It never starts MCP stdio or requests a local RemoteControl endpoint.
 - Verify at `1440x960` and `390x844` with Playwright screenshots and nonblank canvas pixel checks.
+- A new user can clone into an empty directory and follow README with only declared Python, Node, and Docker prerequisites; browser core must not require an API key, a local cache, private data, absolute paths, or desktop Stellarium.
 
 ---
 
@@ -303,7 +304,7 @@ Expected: FAIL because the fixture API and UI server are absent.
 
 - [ ] **Step 3: Implement fixtures and visual assertions**
 
-The local fixture API returns one fresh weather source, one unavailable light-pollution source, one recommendation window, and all human-review strings for each `/v1` route. Configure Playwright to run Vite on `127.0.0.1`, take screenshots at `1440x960` and `390x844`, and use `locator.evaluate()` to read a 10x10 center canvas pixel area. Fail if all pixels are transparent or all RGB channels are zero. At desktop width assert separate canvas and right-panel boxes; at mobile width assert the panel begins below the canvas.
+The local fixture API returns one fresh weather source, one unavailable light-pollution source, one recommendation window, and all human-review strings for each `/v1` route. Configure Playwright to run Vite on `127.0.0.1`, take screenshots at `1440x960` and `390x844`, and use `locator.evaluate()` to read a 10x10 center canvas pixel area. Fail if all pixels are transparent or all RGB channels are zero. At desktop width assert separate canvas and right-panel boxes; at mobile width assert the panel begins below the canvas. Add README setup commands and cross-link the clean-clone acceptance procedure from server Task 8.
 
 - [ ] **Step 4: Run complete Web and Python acceptance commands**
 
