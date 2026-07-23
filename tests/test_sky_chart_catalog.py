@@ -1,12 +1,46 @@
 import copy
+import gzip
 from hashlib import sha256
 from importlib.resources import files
 import json
+from pathlib import Path
+from typing import Iterable, Mapping
 
 import pytest
 
 import starskill.sky_chart_catalog as catalog_module
-from starskill.sky_chart_catalog import load_bundled_catalog, load_hyg_source
+from starskill.sky_chart_catalog import (
+    CatalogDownloadError,
+    FullCatalogCache,
+    FullCatalogUnavailableError,
+    HygSource,
+    load_bundled_catalog,
+    load_hyg_source,
+    select_catalog,
+)
+
+
+class FakeFetcher:
+    def __init__(
+        self,
+        *,
+        status: int = 200,
+        chunks: Iterable[bytes] = (),
+        headers: Mapping[str, str] | None = None,
+    ) -> None:
+        self.status = status
+        self.chunks = chunks
+        self.headers = headers if headers is not None else {}
+        self.urls: list[str] = []
+
+    def stream(self, url: str, *, max_bytes: int) -> tuple[int, Mapping[str, str], Iterable[bytes]]:
+        self.urls.append(url)
+        return self.status, self.headers, self.chunks
+
+
+@pytest.fixture
+def hyg_csv_bytes() -> bytes:
+    return Path("tests/fixtures/sky_chart/hyg-valid.csv").read_bytes()
 
 
 def test_bundled_catalog_is_available_from_installed_package_data() -> None:
@@ -100,6 +134,165 @@ def test_catalog_resource_replacement_does_not_read_existing_resource(
     assert len(load_bundled_catalog().stars) == 100
 
 
+def test_auto_uses_bundled_when_no_full_cache(tmp_path: Path) -> None:
+    selection = select_catalog("auto", load_bundled_catalog(), FullCatalogCache(tmp_path, load_hyg_source()))
+
+    assert selection.mode_used == "bundled"
+    assert selection.status == "degraded"
+
+
+def test_bundled_mode_is_available_without_a_full_cache(tmp_path: Path) -> None:
+    selection = select_catalog(
+        "bundled", load_bundled_catalog(), FullCatalogCache(tmp_path, load_hyg_source())
+    )
+
+    assert selection.mode_used == "bundled"
+    assert selection.status == "available"
+
+
+def test_full_rejects_missing_cache_without_network(tmp_path: Path) -> None:
+    with pytest.raises(FullCatalogUnavailableError, match="--download-catalog"):
+        select_catalog("full", load_bundled_catalog(), FullCatalogCache(tmp_path, load_hyg_source()))
+
+
+def test_download_publishes_verified_full_catalog(tmp_path: Path, hyg_csv_bytes: bytes) -> None:
+    archive = gzip.compress(hyg_csv_bytes)
+    source = _test_source(archive)
+    fetcher = FakeFetcher(chunks=[archive], headers={"ETag": '"fixture"'})
+    cache = FullCatalogCache(tmp_path, source)
+
+    summary = cache.download_and_publish(fetcher)
+    catalog = cache.load_valid()
+
+    assert fetcher.urls == [source.url]
+    assert summary.row_count == 100_001
+    assert catalog is not None
+    assert len(catalog.stars) == 100_001
+    assert catalog.stars[0].ra_deg == 0.0
+    assert catalog.stars[0].name == "Fixture Star 1"
+    assert select_catalog("full", load_bundled_catalog(), cache).mode_used == "full"
+
+
+def test_download_rejects_non_200_response(tmp_path: Path) -> None:
+    cache = FullCatalogCache(tmp_path, load_hyg_source())
+
+    with pytest.raises(CatalogDownloadError, match="status 404"):
+        cache.download_and_publish(FakeFetcher(status=404))
+
+    assert not cache.catalog_path.exists()
+    assert not cache.manifest_path.exists()
+
+
+def test_download_rejects_stream_larger_than_fixed_limit(tmp_path: Path) -> None:
+    def chunks() -> Iterable[bytes]:
+        for _ in range(2_049):
+            yield b"x" * 65_536
+
+    cache = FullCatalogCache(tmp_path, load_hyg_source())
+
+    with pytest.raises(CatalogDownloadError, match="maximum size"):
+        cache.download_and_publish(FakeFetcher(chunks=chunks()))
+
+    assert not cache.catalog_path.exists()
+    assert not cache.manifest_path.exists()
+
+
+def test_download_rejects_bad_compressed_source_hash(tmp_path: Path, hyg_csv_bytes: bytes) -> None:
+    archive = gzip.compress(hyg_csv_bytes)
+    source = HygSource(
+        url="https://example.test/hygdata_v41.csv.gz",
+        asset_name="hygdata_v41.csv.gz",
+        version="4.1",
+        license="fixture license",
+        compressed_sha256="0" * 64,
+    )
+
+    with pytest.raises(CatalogDownloadError, match="SHA-256"):
+        FullCatalogCache(tmp_path, source).download_and_publish(FakeFetcher(chunks=[archive]))
+
+
+def test_download_rejects_bad_csv_headers(tmp_path: Path) -> None:
+    archive = gzip.compress(b"id,ra,dec,proper\n1,0,0,No magnitude\n")
+    cache = FullCatalogCache(tmp_path, _test_source(archive))
+
+    with pytest.raises(CatalogDownloadError, match="required headers"):
+        cache.download_and_publish(FakeFetcher(chunks=[archive]))
+
+    assert not cache.catalog_path.exists()
+    assert not cache.manifest_path.exists()
+
+
+def test_download_rejects_csv_with_fewer_than_minimum_rows(tmp_path: Path) -> None:
+    archive = gzip.compress(b"id,ra,dec,mag,proper\n1,0,0,1,Only star\n")
+    cache = FullCatalogCache(tmp_path, _test_source(archive))
+
+    with pytest.raises(CatalogDownloadError, match="at least 100001"):
+        cache.download_and_publish(FakeFetcher(chunks=[archive]))
+
+
+def test_load_valid_rejects_tampered_published_csv(tmp_path: Path, hyg_csv_bytes: bytes) -> None:
+    cache = FullCatalogCache(tmp_path, load_hyg_source())
+    cache.publish_fixture_for_test(hyg_csv_bytes)
+    cache.catalog_path.write_bytes(hyg_csv_bytes + b"# tampered\n")
+
+    assert cache.load_valid() is None
+
+
+def test_invalid_download_keeps_prior_valid_cache(tmp_path: Path, hyg_csv_bytes: bytes) -> None:
+    cache = FullCatalogCache(tmp_path, load_hyg_source())
+    cache.publish_fixture_for_test(hyg_csv_bytes)
+    before_catalog = cache.catalog_path.read_bytes()
+    before_manifest = cache.manifest_path.read_bytes()
+
+    with pytest.raises(CatalogDownloadError):
+        cache.download_and_publish(FakeFetcher(chunks=[b"bad,csv\n"]))
+
+    assert cache.catalog_path.read_bytes() == before_catalog
+    assert cache.manifest_path.read_bytes() == before_manifest
+    assert cache.load_valid() is not None
+
+
+def test_manifest_publish_failure_rolls_back_prior_cache(
+    tmp_path: Path, hyg_csv_bytes: bytes, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    prior_cache = FullCatalogCache(tmp_path, load_hyg_source())
+    prior_cache.publish_fixture_for_test(hyg_csv_bytes)
+    before_catalog = prior_cache.catalog_path.read_bytes()
+    before_manifest = prior_cache.manifest_path.read_bytes()
+    replacement_csv = hyg_csv_bytes.replace(b"Fixture Star 1", b"Replacement Star", 1)
+    archive = gzip.compress(replacement_csv)
+    cache = FullCatalogCache(tmp_path, _test_source(archive))
+    real_replace = catalog_module.os.replace
+    manifest_replace_failed = False
+
+    def fail_manifest_replace(source: Path | str, destination: Path | str) -> None:
+        nonlocal manifest_replace_failed
+        if Path(destination) == cache.manifest_path and not manifest_replace_failed:
+            manifest_replace_failed = True
+            raise OSError("fixture manifest rename failure")
+        real_replace(source, destination)
+
+    monkeypatch.setattr(catalog_module.os, "replace", fail_manifest_replace)
+
+    with pytest.raises(CatalogDownloadError):
+        cache.download_and_publish(FakeFetcher(chunks=[archive]))
+
+    assert cache.catalog_path.read_bytes() == before_catalog
+    assert cache.manifest_path.read_bytes() == before_manifest
+
+
+def test_failed_download_never_publishes_partial_cache(tmp_path: Path) -> None:
+    archive = gzip.compress(b"id,ra,dec,proper\n1,0,0,missing magnitude\n")
+    cache = FullCatalogCache(tmp_path, _test_source(archive))
+
+    with pytest.raises(CatalogDownloadError):
+        cache.download_and_publish(FakeFetcher(chunks=[archive]))
+
+    assert not cache.catalog_path.exists()
+    assert not cache.manifest_path.exists()
+    assert list(cache.cache_root.glob("*.tmp")) == []
+
+
 def _catalog_resources() -> dict[str, object]:
     return {
         name: json.loads(files("starskill").joinpath("data", name).read_text(encoding="utf-8"))
@@ -129,3 +322,13 @@ def _refresh_records_digest(envelope: dict[str, object]) -> None:
     envelope["sha256"] = sha256(
         json.dumps(records, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
     ).hexdigest()
+
+
+def _test_source(archive: bytes) -> HygSource:
+    return HygSource(
+        url="https://example.test/hygdata_v41.csv.gz",
+        asset_name="hygdata_v41.csv.gz",
+        version="4.1",
+        license="fixture license",
+        compressed_sha256=sha256(archive).hexdigest(),
+    )
