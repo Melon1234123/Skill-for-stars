@@ -10,6 +10,24 @@ from starskill.schemas import (
     ResolvedAstronomicalTarget,
     TargetRef,
 )
+from starskill.target_references import (
+    UnsupportedSolarSystemBodyError,
+    resolve_target_ref,
+)
+
+
+class StaticSimbadBackend:
+    service_url = "https://simbad.example.test"
+
+    def query_object(self, query_name: str) -> dict[str, object]:
+        assert query_name == "M 31"
+        return {
+            "canonical_name": "M 31",
+            "ra_deg": 10.684708,
+            "dec_deg": 41.26875,
+            "object_type": "Galaxy",
+            "aliases": ["Andromeda Galaxy"],
+        }
 
 
 @pytest.fixture
@@ -35,6 +53,42 @@ def test_target_ref_accepts_each_supported_kind() -> None:
             "dec_deg": 41.26875,
         }
     ).ra_deg == 10.684708
+
+
+def test_resolve_target_ref_marks_motion_and_provenance(tmp_path) -> None:
+    solar = resolve_target_ref(
+        TypeAdapter(TargetRef).validate_python({"kind": "solar_system", "body": "mars"})
+    )
+    catalog = resolve_target_ref(
+        TypeAdapter(TargetRef).validate_python({"kind": "simbad", "name": "M31"}),
+        backend=StaticSimbadBackend(),
+        cache_dir=tmp_path,
+    )
+    direct = resolve_target_ref(
+        TypeAdapter(TargetRef).validate_python(
+            {"kind": "coordinates", "label": "C", "ra_deg": 10, "dec_deg": 20}
+        )
+    )
+
+    assert (solar.motion, solar.source.provider) == (
+        "dynamic",
+        "astropy_builtin_ephemeris",
+    )
+    assert (catalog.motion, catalog.catalog_target.canonical_name) == ("fixed_icrs", "M 31")
+    assert (direct.motion, direct.source.provider, direct.ra_deg) == (
+        "fixed_icrs",
+        "user_coordinates",
+        10,
+    )
+
+
+def test_pluto_is_an_explicit_unsupported_solar_system_failure() -> None:
+    ref = TypeAdapter(TargetRef).validate_python({"kind": "solar_system", "body": "pluto"})
+
+    with pytest.raises(UnsupportedSolarSystemBodyError) as exc_info:
+        resolve_target_ref(ref)
+
+    assert exc_info.value.code == "unsupported_solar_system_body"
 
 
 def test_coordinates_and_general_relationship_reject_invalid_contracts(

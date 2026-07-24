@@ -6,26 +6,24 @@ from dataclasses import dataclass
 from types import MappingProxyType
 from typing import Callable, Literal
 
-from starskill.schemas import ResolvedTarget, SkyChartTarget
+from starskill.schemas import (
+    CoordinateTargetRef,
+    ResolvedAstronomicalTarget,
+    ResolvedTarget,
+    SkyChartTarget,
+    SolarSystemTargetRef,
+    TargetRef,
+)
+from starskill.target_references import (
+    SUPPORTED_SOLAR_SYSTEM_BODIES,
+    resolve_target_ref,
+)
 
 
 _BUILTIN_COORDINATES = MappingProxyType(
     {
         "m42": ("M42", 83.822083, -5.391111),
         "m 42": ("M42", 83.822083, -5.391111),
-    }
-)
-_SOLAR_SYSTEM_BODIES = MappingProxyType(
-    {
-        "sun": ("Sun", "sun"),
-        "moon": ("Moon", "moon"),
-        "mercury": ("Mercury", "mercury"),
-        "venus": ("Venus", "venus"),
-        "mars": ("Mars", "mars"),
-        "jupiter": ("Jupiter", "jupiter"),
-        "saturn": ("Saturn", "saturn"),
-        "uranus": ("Uranus", "uranus"),
-        "neptune": ("Neptune", "neptune"),
     }
 )
 
@@ -42,15 +40,29 @@ class ResolvedSkyTarget:
 class SkyChartTargetResolver:
     """Resolve only validated names through an injected existing resolver."""
 
-    def __init__(self, external_resolver: Callable[[str], ResolvedTarget | None]) -> None:
+    def __init__(
+        self,
+        external_resolver: Callable[[str], ResolvedTarget | None],
+        target_ref_resolver: Callable[[TargetRef], ResolvedAstronomicalTarget] = resolve_target_ref,
+    ) -> None:
         self._external_resolver = external_resolver
+        self._target_ref_resolver = target_ref_resolver
 
     def resolve(self, target: SkyChartTarget) -> ResolvedSkyTarget | None:
         if target.mode == "coordinates":
+            assert target.ra_deg is not None and target.dec_deg is not None
+            resolved = self._target_ref_resolver(
+                CoordinateTargetRef(
+                    kind="coordinates",
+                    label="RA/Dec target",
+                    ra_deg=target.ra_deg,
+                    dec_deg=target.dec_deg,
+                )
+            )
             return ResolvedSkyTarget(
-                "RA/Dec target",
-                target.ra_deg,
-                target.dec_deg,
+                resolved.label,
+                resolved.ra_deg,
+                resolved.dec_deg,
                 None,
                 "input_coordinates",
             )
@@ -62,9 +74,17 @@ class SkyChartTargetResolver:
         if builtin := _BUILTIN_COORDINATES.get(key):
             label, ra_deg, dec_deg = builtin
             return ResolvedSkyTarget(label, ra_deg, dec_deg, None, "bundled")
-        if body := _SOLAR_SYSTEM_BODIES.get(key):
-            label, solar_system_body = body
-            return ResolvedSkyTarget(label, None, None, solar_system_body, "solar_system")
+        if key in SUPPORTED_SOLAR_SYSTEM_BODIES:
+            resolved = self._target_ref_resolver(
+                SolarSystemTargetRef(kind="solar_system", body=key)
+            )
+            return ResolvedSkyTarget(
+                resolved.label,
+                resolved.ra_deg,
+                resolved.dec_deg,
+                key,
+                "solar_system",
+            )
 
         resolved = self._external_resolver(name)
         if resolved is None:

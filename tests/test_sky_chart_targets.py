@@ -2,9 +2,46 @@ import pytest
 
 from pydantic import ValidationError
 
-from starskill.schemas import ResolvedTarget, SkyChartTarget, TargetSource
+from starskill.schemas import (
+    AstronomicalTargetSource,
+    ResolvedAstronomicalTarget,
+    ResolvedTarget,
+    SkyChartTarget,
+    TargetSource,
+)
 from starskill.sky_chart_targets import SkyChartTargetResolver
 from starskill.target_resolver import TargetNotFoundError, TargetServiceError
+
+
+def test_coordinate_target_delegates_to_target_ref_resolver() -> None:
+    resolved_refs = []
+
+    def resolve_ref(target):
+        resolved_refs.append(target)
+        return ResolvedAstronomicalTarget(
+            label=target.label,
+            kind=target.kind,
+            motion="fixed_icrs",
+            ra_deg=target.ra_deg,
+            dec_deg=target.dec_deg,
+            source=AstronomicalTargetSource(
+                provider="user_coordinates",
+                from_cache=False,
+                accessed_at="2026-01-01T00:00:00Z",
+            ),
+        )
+
+    resolver = SkyChartTargetResolver(
+        external_resolver=lambda _name: None,
+        target_ref_resolver=resolve_ref,
+    )
+
+    result = resolver.resolve(
+        SkyChartTarget(mode="coordinates", ra_deg=83.822083, dec_deg=-5.391111)
+    )
+
+    assert result is not None and result.source == "input_coordinates"
+    assert resolved_refs[0].kind == "coordinates"
 
 
 def test_coordinate_target_never_calls_network_resolver() -> None:
