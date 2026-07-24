@@ -60,6 +60,20 @@ from starskill.visualizer import plot_visibility
 from starskill.web_api import HttpCatalogFetcher, run_web_server
 
 
+class InputValidationError(ValueError):
+    """A user-provided input file cannot be parsed as a JSON object."""
+
+
+def load_json_object(path: Path) -> dict[str, object]:
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise InputValidationError(f"invalid JSON input: {path}: {exc}") from exc
+    if not isinstance(payload, dict):
+        raise InputValidationError("JSON input must be an object")
+    return payload
+
+
 def print_resolution_error(
     exc: InvalidTargetNameError | TargetNotFoundError | TargetServiceError,
 ) -> None:
@@ -88,6 +102,27 @@ def print_validation_error(exc: ValidationError) -> None:
                 "valid": False,
                 "error": "validation_error",
                 "details": details,
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
+        file=sys.stderr,
+    )
+
+
+def print_input_validation_error(exc: InputValidationError) -> None:
+    print(
+        json.dumps(
+            {
+                "valid": False,
+                "error": "validation_error",
+                "details": [
+                    {
+                        "location": [],
+                        "message": str(exc),
+                        "type": "json_invalid",
+                    }
+                ],
             },
             ensure_ascii=False,
             indent=2,
@@ -262,13 +297,16 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     if args.command == "plan":
         try:
-            ephemeris = EphemerisResult.model_validate_json(
-                args.ephemeris_path.read_text(encoding="utf-8")
+            ephemeris = EphemerisResult.model_validate(
+                load_json_object(args.ephemeris_path)
             )
             criteria = VisibilityCriteria(
                 min_target_altitude_deg=args.min_target_altitude_deg,
                 max_sun_altitude_deg=args.max_sun_altitude_deg,
             )
+        except InputValidationError as exc:
+            print_input_validation_error(exc)
+            return 2
         except ValidationError as exc:
             print_validation_error(exc)
             return 2
@@ -293,7 +331,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 0
 
     if args.command == "relationship":
-        payload = json.loads(args.input_path.read_text(encoding="utf-8"))
+        try:
+            payload = load_json_object(args.input_path)
+        except InputValidationError as exc:
+            print_input_validation_error(exc)
+            return 2
         try:
             relationship_task = SolarSystemRelationshipTask.model_validate(payload)
         except ValidationError as exc:
@@ -320,7 +362,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 0
 
     if args.command == "fetch-image":
-        payload = json.loads(args.input_path.read_text(encoding="utf-8"))
+        try:
+            payload = load_json_object(args.input_path)
+        except InputValidationError as exc:
+            print_input_validation_error(exc)
+            return 2
         try:
             image_request = SDSSImageRequest.model_validate(payload)
         except ValidationError as exc:
@@ -363,7 +409,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
         return 0
 
-    payload = json.loads(args.input_path.read_text(encoding="utf-8"))
+    try:
+        payload = load_json_object(args.input_path)
+    except InputValidationError as exc:
+        print_input_validation_error(exc)
+        return 2
     try:
         task = ObservationTask.model_validate(payload)
     except ValidationError as exc:
@@ -371,9 +421,14 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 2
 
     if args.command == "ephemeris":
-        target = ResolvedTarget.model_validate_json(
-            args.target_file.read_text(encoding="utf-8")
-        )
+        try:
+            target = ResolvedTarget.model_validate(load_json_object(args.target_file))
+        except InputValidationError as exc:
+            print_input_validation_error(exc)
+            return 2
+        except ValidationError as exc:
+            print_validation_error(exc)
+            return 2
         result = calculate_ephemeris(task, target)
         write_ephemeris_csv(result, args.output)
         write_ephemeris_json(result, args.metadata)

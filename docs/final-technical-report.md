@@ -52,14 +52,13 @@ SDSS DR18 返回 512×512 光学彩色合成 JPEG。原图、处理图和元数�
 
 ## 7. 最终验收
 
-- 工作副本完整测试：`75 passed`；
+- 当前工作副本完整测试：`178 passed`；
+- 由已提交文件和本次改动组成的干净源码副本测试：`178 passed`；
 - `pip check`：无依赖冲突；
 - `compileall`：源码与测试文件编译成功；
-- `skills/run-starskill`：`quick_validate.py` 校验通过且无 TODO；
-- F 盘同步：38 个交付文件逐文件 SHA-256 一致；
-- 从 F 盘干净源码构建非 editable wheel 成功，wheel SHA-256 为 `0bf4cdd294043844a00bd5fce1185adf96d88cf02e0c9daceb38dda52265ccd7`；
-- 从 wheel 隔离目录导入后再次运行测试：`75 passed`；
-- wheel 实跑三条工作流全部返回退出码 `0`，M42 清单哈希 9/9 有效，M51 源图哈希与记录一致。
+- 非法 JSON 输入回归测试覆盖 `validate`、`relationship`、`fetch-image`、`run` 和 `ephemeris`；
+- 非 editable wheel 构建成功，wheel SHA-256 为 `593bbae6c6a43d60230dbadc7932633ee6d9cdf086c50b98b8bbece1b22445d5`；
+- 缓存冒烟运行中三条工作流全部返回退出码 `0`，M42 清单包含 9 个产物记录，M51 源图哈希与元数据一致。
 
 ## 8. 结论与边界
 

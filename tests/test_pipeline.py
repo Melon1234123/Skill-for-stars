@@ -125,6 +125,26 @@ def test_run_pipeline_reports_cache_hit_on_second_run(tmp_path) -> None:
     assert backend.call_count == 1
 
 
+def test_run_pipeline_assigns_unique_ids_for_same_second_runs(tmp_path) -> None:
+    first = starskill.run_pipeline(
+        load_task(),
+        output_dir=tmp_path / "run-1",
+        cache_dir=tmp_path / "cache",
+        backend=StaticPipelineBackend(),
+        clock=fixed_clock,
+    )
+    second = starskill.run_pipeline(
+        load_task(),
+        output_dir=tmp_path / "run-2",
+        cache_dir=tmp_path / "cache",
+        backend=StaticPipelineBackend(),
+        clock=fixed_clock,
+    )
+
+    assert first.manifest.run_id != second.manifest.run_id
+    assert first.manifest.status == second.manifest.status == "success"
+
+
 def test_run_pipeline_keeps_data_when_figure_generation_fails(tmp_path) -> None:
     def fail_plot(*args, **kwargs) -> None:
         raise RuntimeError("renderer unavailable")

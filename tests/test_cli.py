@@ -192,6 +192,78 @@ def test_validate_command_returns_structured_validation_errors(
     assert output["details"][0]["location"] == ["observer", "timezone"]
 
 
+@pytest.mark.parametrize("command", ["validate", "relationship", "fetch-image", "run"])
+def test_cli_rejects_malformed_json_with_structured_error(
+    tmp_path, capsys, command
+) -> None:
+    input_path = tmp_path / "malformed.json"
+    input_path.write_text("{not-json", encoding="utf-8")
+    argv = {
+        "validate": ["validate", str(input_path)],
+        "relationship": [
+            "relationship",
+            str(input_path),
+            "--output",
+            str(tmp_path / "relationship.csv"),
+            "--metadata",
+            str(tmp_path / "relationship.json"),
+        ],
+        "fetch-image": [
+            "fetch-image",
+            str(input_path),
+            "--output-dir",
+            str(tmp_path / "image"),
+        ],
+        "run": [
+            "run",
+            str(input_path),
+            "--output-dir",
+            str(tmp_path / "run"),
+        ],
+    }[command]
+
+    exit_code = main(argv)
+    captured = capsys.readouterr()
+    payload = json.loads(captured.err)
+
+    assert exit_code == 2
+    assert payload["valid"] is False
+    assert payload["error"] == "validation_error"
+    assert payload["details"][0]["type"] == "json_invalid"
+    assert "Traceback" not in captured.err
+
+
+def test_ephemeris_rejects_malformed_target_file_with_structured_error(
+    tmp_path, capsys
+) -> None:
+    target_path = tmp_path / "malformed-target.json"
+    target_path.write_text("{not-json", encoding="utf-8")
+    output_path = tmp_path / "ephemeris.csv"
+    metadata_path = tmp_path / "ephemeris.json"
+
+    exit_code = main(
+        [
+            "ephemeris",
+            str(PROJECT_ROOT / "examples/observation_m42_beijing.json"),
+            "--target-file",
+            str(target_path),
+            "--output",
+            str(output_path),
+            "--metadata",
+            str(metadata_path),
+        ]
+    )
+    captured = capsys.readouterr()
+    payload = json.loads(captured.err)
+
+    assert exit_code == 2
+    assert payload["valid"] is False
+    assert payload["error"] == "validation_error"
+    assert payload["details"][0]["type"] == "json_invalid"
+    assert not output_path.exists()
+    assert not metadata_path.exists()
+
+
 def test_python_module_entrypoint_validates_documented_example() -> None:
     result = subprocess.run(
         [

@@ -93,6 +93,10 @@ Expected files: `data/m51_sdss.jpg`, `figures/m51_display.png`, and `image_metad
 | 8 | Public response exceeds the configured byte limit |
 | 9 | Public response fails MIME, JPEG, dimension, or content validation |
 
+Malformed, unreadable, non-UTF-8, or non-object JSON input is a validation
+failure: return exit code `2` and write `error=validation_error` JSON to stderr.
+The command must not write workflow outputs before input parsing succeeds.
+
 Errors are JSON on stderr. Never reinterpret a nonzero exit as success. A failed external query must not be replaced with invented data.
 
 ## Evaluation replay capture

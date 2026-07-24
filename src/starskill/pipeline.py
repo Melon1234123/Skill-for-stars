@@ -6,6 +6,7 @@ from collections.abc import Callable
 from datetime import datetime, timezone
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
+from uuid import uuid4
 
 from starskill.ephemeris_calculator import (
     calculate_ephemeris,
@@ -65,6 +66,10 @@ def _artifact_record(output_dir: Path, path: Path) -> ArtifactRecord:
         bytes=len(content),
         sha256=hashlib.sha256(content).hexdigest(),
     )
+
+
+def _run_id(started_at: datetime, label: str) -> str:
+    return f"{started_at.strftime('%Y%m%dT%H%M%SZ')}-{label}-{uuid4().hex[:8]}"
 
 
 def _write_report(
@@ -196,7 +201,7 @@ def run_pipeline(
             message=str(exc),
         )
         manifest = PipelineManifest(
-            run_id=f"{started_at.strftime('%Y%m%dT%H%M%SZ')}-failed",
+            run_id=_run_id(started_at, "failed"),
             status="failed",
             started_at=started_at,
             completed_at=clock(),
@@ -258,7 +263,9 @@ def run_pipeline(
         artifact_paths.append(figure_path)
     status = "degraded" if issues else "success"
     manifest = PipelineManifest(
-        run_id=f"{started_at.strftime('%Y%m%dT%H%M%SZ')}-{target.query_name.lower().replace(' ', '-')}",
+        run_id=_run_id(
+            started_at, target.query_name.lower().replace(" ", "-")
+        ),
         status=status,
         started_at=started_at,
         completed_at=clock(),
