@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>StarSkill Sky Chart</title>
+  <title>StarSkill 本地星图</title>
   <style>
     :root {
       --ink: #071216;
@@ -378,13 +378,13 @@
   <main class="app-shell">
     <aside class="control-rail" aria-label="星图参数">
       <header class="brand">
-        <p class="brand-kicker">Local observing desk</p>
-        <h1>StarSkill<br>Sky Chart</h1>
+        <p class="brand-kicker">本地观测台</p>
+        <h1>StarSkill<br>本地星图</h1>
       </header>
 
       <form id="sky-chart-form">
         <section class="control-section" aria-labelledby="observer-label">
-          <h2 class="section-label" id="observer-label">Observer / 观测地</h2>
+          <h2 class="section-label" id="observer-label">观测地</h2>
           <div class="field-grid">
             <div>
               <label for="site-preset">常用观测地</label>
@@ -392,6 +392,12 @@
                 <option value="beijing" selected>北京</option>
                 <option value="shanghai">上海</option>
                 <option value="guangzhou">广州</option>
+                <option value="hangzhou">杭州</option>
+                <option value="shenzhen">深圳</option>
+                <option value="chengdu">成都</option>
+                <option value="kunming">昆明</option>
+                <option value="lhasa">拉萨</option>
+                <option value="urumqi">乌鲁木齐</option>
                 <option value="manual">手动设置</option>
               </select>
             </div>
@@ -410,24 +416,24 @@
               </div>
             </div>
             <div>
-              <label for="timezone">IANA 时区</label>
+              <label for="timezone">时区</label>
               <input id="timezone" type="text" value="Asia/Shanghai" required>
             </div>
           </div>
         </section>
 
         <section class="control-section" aria-labelledby="time-label">
-          <h2 class="section-label" id="time-label">Time / 时刻</h2>
+          <h2 class="section-label" id="time-label">时刻</h2>
           <label for="timestamp-local">当地日期时间</label>
           <input id="timestamp-local" type="datetime-local" step="60" required>
           <div class="time-row">
             <input id="time-slider" type="range" min="-720" max="720" step="15" value="0" aria-label="前后十二小时">
-            <output class="data-readout" id="time-offset" for="time-slider">+0m</output>
+            <output class="data-readout" id="time-offset" for="time-slider">+0 分钟</output>
           </div>
         </section>
 
         <section class="control-section" aria-labelledby="target-label">
-          <h2 class="section-label" id="target-label">Target / 目标</h2>
+          <h2 class="section-label" id="target-label">目标</h2>
           <fieldset>
             <legend>输入方式</legend>
             <div class="mode-switch">
@@ -437,7 +443,7 @@
               </label>
               <label>
                 <input type="radio" name="target-mode" value="coordinates">
-                <span>RA / Dec</span>
+                <span>赤经 / 赤纬</span>
               </label>
             </div>
           </fieldset>
@@ -447,23 +453,23 @@
           </div>
           <div class="field-grid coordinates" id="coordinate-target-fields" hidden>
             <div>
-              <label for="target-ra">RA (deg)</label>
+              <label for="target-ra">赤经（度）</label>
               <input id="target-ra" type="number" min="0" max="359.999999" step="0.000001">
             </div>
             <div>
-              <label for="target-dec">Dec (deg)</label>
+              <label for="target-dec">赤纬（度）</label>
               <input id="target-dec" type="number" min="-90" max="90" step="0.000001">
             </div>
           </div>
         </section>
 
         <section class="control-section" aria-labelledby="catalog-label">
-          <h2 class="section-label" id="catalog-label">Catalog / 星表</h2>
+          <h2 class="section-label" id="catalog-label">星表</h2>
           <label for="catalog-mode">星表模式</label>
           <select id="catalog-mode">
-            <option value="auto" selected>Auto</option>
-            <option value="bundled">Bundled</option>
-            <option value="full">Full</option>
+            <option value="auto" selected>自动（推荐）</option>
+            <option value="bundled">随包亮星表</option>
+            <option value="full">完整星表</option>
           </select>
         </section>
 
@@ -473,18 +479,18 @@
 
     <section class="chart-workspace" aria-labelledby="chart-heading">
       <header class="workspace-header">
-        <h2 id="chart-heading">Local sky / 本地星空</h2>
+        <h2 id="chart-heading">本地星空</h2>
         <p class="status" id="status" aria-live="polite">正在准备星图...</p>
       </header>
       <div class="chart-stage">
         <div class="chart-frame">
           <img id="sky-chart-image" alt="当前观测参数生成的星图">
-          <div class="empty-state">Awaiting first render</div>
+          <div class="empty-state">等待生成星图</div>
         </div>
       </div>
       <nav class="export-bar" aria-label="导出">
-        <a id="export-png" aria-disabled="true">PNG</a>
-        <a id="export-json" aria-disabled="true">JSON</a>
+        <a id="export-png" aria-disabled="true">导出 PNG</a>
+        <a id="export-json" aria-disabled="true">导出 JSON</a>
       </nav>
     </section>
   </main>
@@ -534,6 +540,42 @@
           locationName: "广州",
           longitude: "113.2644",
           latitude: "23.1291",
+          timezone: "Asia/Shanghai"
+        }),
+        hangzhou: Object.freeze({
+          locationName: "杭州",
+          longitude: "120.1551",
+          latitude: "30.2741",
+          timezone: "Asia/Shanghai"
+        }),
+        shenzhen: Object.freeze({
+          locationName: "深圳",
+          longitude: "114.0579",
+          latitude: "22.5431",
+          timezone: "Asia/Shanghai"
+        }),
+        chengdu: Object.freeze({
+          locationName: "成都",
+          longitude: "104.0665",
+          latitude: "30.5728",
+          timezone: "Asia/Shanghai"
+        }),
+        kunming: Object.freeze({
+          locationName: "昆明",
+          longitude: "102.8329",
+          latitude: "24.8801",
+          timezone: "Asia/Shanghai"
+        }),
+        lhasa: Object.freeze({
+          locationName: "拉萨",
+          longitude: "91.1409",
+          latitude: "29.6456",
+          timezone: "Asia/Shanghai"
+        }),
+        urumqi: Object.freeze({
+          locationName: "乌鲁木齐",
+          longitude: "87.6168",
+          latitude: "43.8256",
           timezone: "Asia/Shanghai"
         })
       });
@@ -654,6 +696,26 @@
         return warnings.map((warning) => messages[warning] || warning).join(" ");
       }
 
+      function errorMessage(detail) {
+        const messages = {
+          "Renderer busy; retry shortly": "星图正在生成，请稍后重试。",
+          "Internal server error": "星图暂时不可用，请稍后重试。"
+        };
+        if (detail === "Invalid sky-chart request") {
+          return document.getElementById("catalog-mode").value === "full"
+            ? "完整星表不可用，请改用自动或随包亮星表。"
+            : "星图参数无效，请检查观测地、时刻和目标。";
+        }
+        return messages[detail] || "星图暂时不可用，请稍后重试。";
+      }
+
+      function catalogModeLabel(mode) {
+        return {
+          bundled: "随包亮星表",
+          full: "完整星表"
+        }[mode] || "星表";
+      }
+
       async function renderChart() {
         if (!form.reportValidity()) {
           return;
@@ -673,9 +735,8 @@
           });
           const body = await response.json();
           if (!response.ok) {
-            const serverMessage = typeof body.detail === "string" ? body.detail : "星图暂时不可用";
             status.dataset.state = "error";
-            status.textContent = serverMessage;
+            status.textContent = errorMessage(body.detail);
             return;
           }
           const renderBase = `/v1/sky-chart/renders/${body.render_id}`;
@@ -683,7 +744,7 @@
           setExports(`${renderBase}.png`, `${renderBase}.json`);
           const warning = warningMessage(body.warnings || []);
           status.dataset.state = "ready";
-          status.textContent = warning || `已生成 ${body.catalog_mode_used} 星表星图`;
+          status.textContent = warning || `已生成${catalogModeLabel(body.catalog_mode_used)}星图。`;
         } catch (error) {
           if (error.name !== "AbortError") {
             status.dataset.state = "error";
@@ -694,12 +755,12 @@
 
       function resetTimeWindow() {
         slider.value = "0";
-        offsetOutput.value = "+0m";
+        offsetOutput.value = "+0 分钟";
         try {
           baseTimestamp = Date.parse(offsetIso(timestampInput.value, timezoneInput.value));
         } catch (_error) {
           status.dataset.state = "error";
-          status.textContent = "IANA 时区无效。";
+          status.textContent = "时区无效，请使用“地区/城市”格式，例如 Asia/Shanghai。";
         }
       }
 
@@ -725,7 +786,7 @@
           new Date(baseTimestamp + minutes * 60000),
           timezoneInput.value
         );
-        offsetOutput.value = `${minutes >= 0 ? "+" : ""}${minutes}m`;
+        offsetOutput.value = `${minutes >= 0 ? "+" : ""}${minutes} 分钟`;
         window.clearTimeout(debounceTimer);
         debounceTimer = window.setTimeout(renderChart, 250);
       });

@@ -175,6 +175,37 @@ def test_page_declares_local_observing_site_presets(
         assert token in page
 
 
+def test_page_uses_chinese_copy_and_includes_additional_site_presets(
+    tmp_path: Path, rendered_chart: RenderedSkyChart
+) -> None:
+    page = make_client(tmp_path, rendered_chart).get("/").text
+
+    for token in (
+        "<title>StarSkill 本地星图</title>",
+        'value="hangzhou"',
+        'value="shenzhen"',
+        'value="chengdu"',
+        'value="kunming"',
+        'value="lhasa"',
+        'value="urumqi"',
+        "本地观测台",
+        ">观测地<",
+        ">时区<",
+        ">时刻<",
+        ">目标<",
+        ">星表<",
+        "本地星空",
+        "等待生成星图",
+        "自动（推荐）",
+        "随包亮星表",
+        "完整星表",
+        "导出 PNG",
+        "导出 JSON",
+        "完整星表不可用，请改用自动或随包亮星表。",
+    ):
+        assert token in page
+
+
 def test_docs_openapi_and_cors_are_disabled(
     tmp_path: Path, rendered_chart: RenderedSkyChart
 ) -> None:

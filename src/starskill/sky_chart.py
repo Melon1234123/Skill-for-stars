@@ -31,6 +31,7 @@ from astropy.time import Time
 from astropy.utils import iers
 import astropy
 import matplotlib
+from matplotlib import font_manager
 from matplotlib.backends.backend_agg import FigureCanvasAgg
 from matplotlib.figure import Figure
 from matplotlib.patches import Circle, Wedge
@@ -85,13 +86,22 @@ LAYER_ORDER = [
     "footer",
 ]
 PLANETS = (
-    ("mercury", "Mercury / 水星", "#b8aaa0"),
-    ("venus", "Venus / 金星", "#f2d28b"),
-    ("mars", "Mars / 火星", "#d96c4b"),
-    ("jupiter", "Jupiter / 木星", "#d7bd9a"),
-    ("saturn", "Saturn / 土星", "#d8c486"),
-    ("uranus", "Uranus / 天王星", "#86d4d8"),
-    ("neptune", "Neptune / 海王星", "#6688d8"),
+    ("mercury", "Mercury / 水星", "水星", "#b8aaa0"),
+    ("venus", "Venus / 金星", "金星", "#f2d28b"),
+    ("mars", "Mars / 火星", "火星", "#d96c4b"),
+    ("jupiter", "Jupiter / 木星", "木星", "#d7bd9a"),
+    ("saturn", "Saturn / 土星", "土星", "#d8c486"),
+    ("uranus", "Uranus / 天王星", "天王星", "#86d4d8"),
+    ("neptune", "Neptune / 海王星", "海王星", "#6688d8"),
+)
+_CJK_FONT_FAMILIES = (
+    "PingFang SC",
+    "Hiragino Sans GB",
+    "STHeiti",
+    "Noto Sans CJK SC",
+    "Microsoft YaHei",
+    "SimHei",
+    "WenQuanYi Zen Hei",
 )
 _RENDER_ID_RE = re.compile(r"[A-Za-z0-9_-]{32}\Z")
 
@@ -121,6 +131,16 @@ def utc_now() -> datetime:
     return datetime.now(timezone.utc)
 
 
+def _chart_font_family() -> str:
+    for family in _CJK_FONT_FAMILIES:
+        try:
+            font_manager.findfont(family, fallback_to_default=False)
+        except ValueError:
+            continue
+        return family
+    return "DejaVu Sans"
+
+
 def project_altaz(altitude_deg: float, azimuth_deg: float) -> tuple[float, float]:
     radius = (90.0 - altitude_deg) / 90.0
     azimuth_rad = np.deg2rad(azimuth_deg)
@@ -145,7 +165,7 @@ def deterministic_astropy_matplotlib() -> Iterator[None]:
         {
             "figure.dpi": CANVAS_DPI,
             "savefig.dpi": CANVAS_DPI,
-            "font.family": "DejaVu Sans",
+            "font.family": _chart_font_family(),
             "figure.facecolor": "#000000",
             "savefig.facecolor": "#000000",
             "savefig.transparent": False,
@@ -262,14 +282,15 @@ class SkyChartRenderer:
                 (
                     body_name,
                     label,
+                    display_label,
                     color,
                     get_body(body_name, context.time_utc, context.location),
                 )
-                for body_name, label, color in PLANETS
+                for body_name, label, display_label, color in PLANETS
             ]
             planets = [
                 self._body_metadata(label, coordinate, context)
-                for _body_name, label, _color, coordinate in planet_records
+                for _body_name, label, _display_label, _color, coordinate in planet_records
             ]
             target = self._target_metadata(resolved_target, context)
 
@@ -479,7 +500,7 @@ class SkyChartRenderer:
             x, y = project_altaz(0, azimuth)
             axes.plot([0, x], [0, y], color="#202d36", linewidth=0.5, zorder=1)
         axes.scatter([0], [0], s=3, c="#33414d", edgecolors="none", zorder=1)
-        for label, x, y in (("N", 0, 1.025), ("E", 1.025, 0), ("S", 0, -1.025), ("W", -1.025, 0)):
+        for label, x, y in (("北", 0, 1.025), ("东", 1.025, 0), ("南", 0, -1.025), ("西", -1.025, 0)):
             axes.text(x, y, label, color="#8ea0aa", fontsize=9, ha="center", va="center", zorder=1)
 
     @staticmethod
@@ -566,16 +587,18 @@ class SkyChartRenderer:
                 zorder=4.2,
             )
         )
-        axes.text(x + 0.025, y + 0.025, moon.label, color="#e8e1ca", fontsize=7, zorder=4)
+        axes.text(x + 0.025, y + 0.025, "月球", color="#e8e1ca", fontsize=7, zorder=4)
 
     @staticmethod
     def _draw_planets(axes, planets: Sequence[SkyChartObject], planet_records) -> None:
-        for planet, (_body_name, _label, color, _coordinate) in zip(planets, planet_records, strict=True):
+        for planet, (_body_name, _label, display_label, color, _coordinate) in zip(
+            planets, planet_records, strict=True
+        ):
             if not planet.drawn:
                 continue
             x, y = project_altaz(planet.altaz.altitude_deg, planet.altaz.azimuth_deg)
             axes.scatter([x], [y], s=46, c=color, edgecolors="#ffffff", linewidths=0.4, zorder=5)
-            axes.text(x + 0.02, y + 0.02, planet.label, color=color, fontsize=6.5, zorder=5)
+            axes.text(x + 0.02, y + 0.02, display_label, color=color, fontsize=6.5, zorder=5)
 
     @staticmethod
     def _draw_target(axes, target: SkyChartObject | None) -> None:
@@ -590,9 +613,11 @@ class SkyChartRenderer:
     def _draw_footer(figure: Figure, request: SkyChartRequest, context: _RenderContext, selection: CatalogSelection) -> None:
         local = request.timestamp_local.isoformat()
         utc = context.timestamp_utc.isoformat().replace("+00:00", "Z")
+        catalog_name = {"bundled": "随包亮星表", "full": "完整星表"}[selection.mode_used]
+        catalog_status = {"available": "可用", "degraded": "降级"}[selection.status]
         footer = (
-            f"{request.observer.location_name} | {request.observer.timezone} | {local} | UTC {utc} | "
-            f"catalog {selection.mode_used}/{selection.status} | AltAz pressure=0 hPa | builtin ephemeris"
+            f"{request.observer.location_name} | 当地时间 {local} | 协调世界时 {utc} | "
+            f"{catalog_name}（{catalog_status}） | 高度方位坐标 | 无大气折射 | 内置星历表"
         )
         figure.text(0.5, 0.035, footer, color="#93a2aa", fontsize=7.5, ha="center", va="center")
 

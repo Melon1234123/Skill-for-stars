@@ -212,6 +212,56 @@ def test_moon_patch_coverage_tracks_illumination_and_stays_below_horizon_hidden(
         figure.clear()
 
 
+def test_chart_annotations_use_chinese_display_copy(fixed_chart) -> None:
+    figure = Figure()
+    FigureCanvasAgg(figure)
+    axes = figure.add_subplot()
+    moon = fixed_chart.metadata.objects.moon.model_copy(
+        update={
+            "altaz": fixed_chart.metadata.objects.moon.altaz.model_copy(
+                update={"altitude_deg": 45.0, "azimuth_deg": 180.0}
+            ),
+            "visible": True,
+            "drawn": True,
+        }
+    )
+    planet = fixed_chart.metadata.objects.planets[0].model_copy(
+        update={
+            "altaz": fixed_chart.metadata.objects.planets[0].altaz.model_copy(
+                update={"altitude_deg": 45.0, "azimuth_deg": 90.0}
+            ),
+            "visible": True,
+            "drawn": True,
+        }
+    )
+
+    try:
+        SkyChartRenderer._draw_horizon_grid(axes)
+        SkyChartRenderer._draw_moon(axes, moon)
+        SkyChartRenderer._draw_planets(
+            axes,
+            [planet],
+            [("mercury", "Mercury / 水星", "水星", "#b8aaa0", object())],
+        )
+        SkyChartRenderer._draw_footer(
+            figure,
+            FIXED_REQUEST,
+            SkyChartRenderer._make_context(FIXED_REQUEST),
+            CatalogSelection("bundled", "available", object(), object(), ()),
+        )
+
+        labels = [text.get_text() for text in axes.texts]
+        assert labels[:4] == ["北", "东", "南", "西"]
+        assert "月球" in labels
+        assert "水星" in labels
+        footer = figure.texts[0].get_text()
+        assert "随包亮星表（可用）" in footer
+        assert "高度方位坐标" in footer
+        assert "内置星历表" in footer
+    finally:
+        figure.clear()
+
+
 def test_renderer_clears_figure_when_png_encoding_fails(monkeypatch) -> None:
     cleared_figures = []
     original_clear = Figure.clear
