@@ -28,6 +28,7 @@ from starskill.public_data_fetcher import (
 )
 from starskill.recommendations import recommend_tonight
 from starskill.schemas import (
+    AstronomicalRelationshipTask,
     ExternalSource,
     LightPollutionResult,
     NasaFeature,
@@ -37,11 +38,14 @@ from starskill.schemas import (
     SDSSImageRequest,
     SolarSystemRelationshipTask,
     StellariumSyncRequest,
+    TargetRef,
     TonightRecommendationRequest,
     WeatherForecast,
 )
 from starskill.solar_system_relationship import (
+    calculate_astronomical_relationship,
     calculate_solar_system_relationship,
+    write_astronomical_relationship_csv,
     write_relationship_csv,
     write_relationship_json,
 )
@@ -50,6 +54,10 @@ from starskill.target_resolver import (
     TargetBackend,
     TargetResolutionError,
     resolve_target,
+)
+from starskill.target_references import (
+    UnsupportedSolarSystemBodyError,
+    resolve_target_ref,
 )
 from starskill.stellarium_bridge import DEFAULT_BASE_URL, StellariumBridge
 from starskill.weather import OPEN_METEO_ENDPOINT, OpenMeteoWeatherProvider
@@ -74,6 +82,7 @@ RUN_RESOURCE_PATHS = {
 }
 
 _NASA_DATE = TypeAdapter(str | None)
+_TARGET_REF = TypeAdapter(TargetRef)
 
 
 class StellariumSyncResult(BaseModel):
@@ -180,6 +189,30 @@ class StarSkillMcpService:
             }
         return {"ok": True, "target": resolved.model_dump(mode="json")}
 
+    def resolve_astronomy_target(self, target: dict[str, Any]) -> dict[str, Any]:
+        try:
+            reference = _TARGET_REF.validate_python(target)
+        except ValidationError as exc:
+            return _validation_failure(exc)
+        try:
+            resolved = resolve_target_ref(
+                reference,
+                backend=(
+                    self.target_backend_factory()
+                    if reference.kind == "simbad"
+                    else None
+                ),
+                cache_dir=self.target_cache_dir,
+                clock=self.clock,
+            )
+        except (TargetResolutionError, ValueError) as exc:
+            return {
+                "ok": False,
+                "error": getattr(exc, "code", "target_resolution_error"),
+                "message": str(exc),
+            }
+        return {"ok": True, "target": resolved.model_dump(mode="json")}
+
     def plan_observation(
         self,
         task: dict[str, Any],
@@ -229,6 +262,45 @@ class StarSkillMcpService:
         metadata_path = output_dir / "relationship.json"
         write_relationship_csv(result, csv_path)
         write_relationship_json(result, metadata_path)
+        separations = [sample.angular_separation_deg for sample in result.samples]
+        return {
+            "ok": True,
+            "run_id": run_id,
+            "sample_count": len(result.samples),
+            "minimum_separation_deg": min(separations),
+            "maximum_separation_deg": max(separations),
+            "resources": self._resources_for_run(run_id),
+        }
+
+    def calculate_astronomical_relationship(
+        self, task: dict[str, Any]
+    ) -> dict[str, Any]:
+        try:
+            validated_task = AstronomicalRelationshipTask.model_validate(task)
+        except ValidationError as exc:
+            return _validation_failure(exc)
+
+        run_id, output_dir = self._new_run("relationship")
+        try:
+            result = calculate_astronomical_relationship(
+                validated_task,
+                target_backend=(
+                    self.target_backend_factory()
+                    if "simbad"
+                    in {validated_task.primary.kind, validated_task.secondary.kind}
+                    else None
+                ),
+                cache_dir=self.target_cache_dir,
+                clock=self.clock,
+            )
+        except UnsupportedSolarSystemBodyError as exc:
+            return self._run_failure(run_id, exc)
+        except (TargetResolutionError, ValueError) as exc:
+            return self._run_failure(run_id, exc)
+        write_astronomical_relationship_csv(
+            result, output_dir / "relationship.csv"
+        )
+        write_relationship_json(result, output_dir / "relationship.json")
         separations = [sample.angular_separation_deg for sample in result.samples]
         return {
             "ok": True,
@@ -495,9 +567,9 @@ def build_mcp_server(service: StarSkillMcpService | None = None) -> FastMCP:
         return service.validate_observation_task(task)
 
     @server.tool(structured_output=True)
-    def resolve_astronomy_target(target: str) -> dict[str, Any]:
-        """Resolve a target name through SIMBAD and return cached provenance when available."""
-        return service.resolve_target(target)
+    def resolve_astronomy_target(target: dict[str, Any]) -> dict[str, Any]:
+        """Resolve a typed astronomy target without creating a run directory."""
+        return service.resolve_astronomy_target(target)
 
     @server.tool(structured_output=True)
     def plan_observation(
@@ -516,6 +588,13 @@ def build_mcp_server(service: StarSkillMcpService | None = None) -> FastMCP:
     def calculate_moon_jupiter_relationship(task: dict[str, Any]) -> dict[str, Any]:
         """Calculate the Moon-Jupiter apparent sky relationship for a task."""
         return service.calculate_moon_jupiter_relationship(task)
+
+    @server.tool(structured_output=True)
+    def calculate_astronomical_relationship(
+        task: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Calculate a generalized apparent relationship in a server-owned run."""
+        return service.calculate_astronomical_relationship(task)
 
     @server.tool(structured_output=True)
     def fetch_m51_sdss_image(

@@ -154,6 +154,49 @@ class CliImageBackend:
         return output.getvalue(), "image/jpeg"
 
 
+def write_json(path: Path, payload: dict[str, object]) -> Path:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    return path
+
+
+def coordinate_relationship_task() -> dict[str, object]:
+    return {
+        "task_type": "astronomical_relationship",
+        "primary": {"kind": "coordinates", "label": "A", "ra_deg": 10, "dec_deg": 20},
+        "secondary": {"kind": "coordinates", "label": "B", "ra_deg": 11, "dec_deg": 21},
+        "observer": {
+            "location_name": "Shanghai",
+            "longitude": 121.4737,
+            "latitude": 31.2304,
+            "timezone": "Asia/Shanghai",
+        },
+        "time_range": {
+            "start": "2026-01-10T18:00:00+08:00",
+            "end": "2026-01-10T18:20:00+08:00",
+        },
+        "interval_minutes": 20,
+    }
+
+
+def coordinate_observation_task() -> dict[str, object]:
+    return {
+        "task_type": "observation_plan",
+        "target": {"kind": "coordinates", "label": "A", "ra_deg": 10, "dec_deg": 20},
+        "observer": {
+            "location_name": "Shanghai",
+            "longitude": 121.4737,
+            "latitude": 31.2304,
+            "timezone": "Asia/Shanghai",
+        },
+        "time_range": {
+            "start": "2026-01-10T18:00:00+08:00",
+            "end": "2026-01-10T18:20:00+08:00",
+        },
+        "interval_minutes": 20,
+    }
+
+
 def test_validate_command_prints_canonical_task(tmp_path, capsys) -> None:
     input_path = tmp_path / "task.json"
     input_path.write_text(
@@ -217,6 +260,26 @@ def test_validate_command_returns_structured_validation_errors(
     assert output["valid"] is False
     assert output["error"] == "validation_error"
     assert output["details"][0]["location"] == ["observer", "timezone"]
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        coordinate_relationship_task(),
+        json.loads((PROJECT_ROOT / "examples/moon_jupiter_shanghai.json").read_text()),
+    ],
+)
+def test_validate_command_accepts_relationship_task_versions(
+    tmp_path: Path, capsys, payload: dict[str, object]
+) -> None:
+    input_path = write_json(tmp_path / "task.json", payload)
+
+    exit_code = main(["validate", str(input_path)])
+    output = json.loads(capsys.readouterr().out)
+
+    assert exit_code == 0
+    assert output["valid"] is True
+    assert output["task"]["task_type"] == payload["task_type"]
 
 
 @pytest.mark.parametrize("command", ["validate", "relationship", "fetch-image", "run"])
@@ -367,6 +430,42 @@ def test_ephemeris_command_writes_csv_and_json(tmp_path, capsys) -> None:
     assert summary["sample_count"] == 49
     assert len(rows) == 49
     assert len(metadata["samples"]) == 49
+
+
+def test_resolve_target_and_ephemeris_accept_typed_references(
+    tmp_path: Path, capsys
+) -> None:
+    reference_path = write_json(
+        tmp_path / "mars.json", {"kind": "solar_system", "body": "mars"}
+    )
+    task_path = write_json(
+        tmp_path / "coordinate-observation.json", coordinate_observation_task()
+    )
+    resolved_path = tmp_path / "mars-resolved.json"
+    ephemeris_path = tmp_path / "ephemeris.csv"
+    metadata_path = tmp_path / "ephemeris.json"
+
+    assert main(
+        ["resolve-target", str(reference_path), "--output", str(resolved_path)]
+    ) == 0
+    capsys.readouterr()
+    assert main(
+        [
+            "ephemeris",
+            str(task_path),
+            "--output",
+            str(ephemeris_path),
+            "--metadata",
+            str(metadata_path),
+        ]
+    ) == 0
+
+    resolved = json.loads(resolved_path.read_text(encoding="utf-8"))
+    ephemeris = json.loads(metadata_path.read_text(encoding="utf-8"))
+    assert resolved["motion"] == "dynamic"
+    assert resolved["source"]["provider"] == "astropy_builtin_ephemeris"
+    assert ephemeris["target"]["kind"] == "coordinates"
+    assert ephemeris["target"]["source"]["provider"] == "user_coordinates"
 
 
 def test_module_help_lists_plan_command() -> None:
@@ -549,6 +648,60 @@ def test_relationship_command_writes_csv_and_json(tmp_path, capsys) -> None:
     assert summary["maximum_separation_deg"] > summary["minimum_separation_deg"]
     assert csv_path.is_file()
     assert len(payload["samples"]) == 13
+    assert "schema_version" not in payload["settings"]
+    with csv_path.open(encoding="utf-8", newline="") as handle:
+        assert "moon_altitude_deg" in next(csv.reader(handle))
+
+
+def test_relationship_cli_accepts_generic_coordinate_pair(
+    tmp_path: Path, capsys
+) -> None:
+    input_path = write_json(tmp_path / "task.json", coordinate_relationship_task())
+    csv_path = tmp_path / "relationship.csv"
+    metadata_path = tmp_path / "relationship.json"
+
+    exit_code = main(
+        [
+            "relationship",
+            str(input_path),
+            "--output",
+            str(csv_path),
+            "--metadata",
+            str(metadata_path),
+        ]
+    )
+
+    summary = json.loads(capsys.readouterr().out)
+    metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    with csv_path.open(encoding="utf-8", newline="") as handle:
+        columns = next(csv.reader(handle))
+    assert exit_code == 0
+    assert summary["sample_count"] == 2
+    assert metadata["settings"]["schema_version"] == "2.0"
+    assert "primary_altitude_deg" in columns
+    assert "moon_altitude_deg" not in columns
+
+
+@pytest.mark.parametrize(
+    ("filename", "primary_kind", "secondary_kind"),
+    [
+        ("mars_saturn.json", "solar_system", "solar_system"),
+        ("mars_m31.json", "solar_system", "simbad"),
+        ("m31_coordinates.json", "simbad", "coordinates"),
+        ("coordinates_coordinates.json", "coordinates", "coordinates"),
+    ],
+)
+def test_fixed_v2_relationship_examples_validate(
+    filename: str, primary_kind: str, secondary_kind: str, capsys
+) -> None:
+    input_path = PROJECT_ROOT / "examples" / "relationships" / filename
+
+    exit_code = main(["validate", str(input_path)])
+    output = json.loads(capsys.readouterr().out)
+
+    assert exit_code == 0
+    assert output["task"]["primary"]["kind"] == primary_kind
+    assert output["task"]["secondary"]["kind"] == secondary_kind
 
 
 def test_fetch_image_command_writes_source_display_and_metadata(

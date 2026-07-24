@@ -1,0 +1,21 @@
+{
+  "task_type": "astronomical_relationship",
+  "primary": {"kind": "simbad", "name": "M31"},
+  "secondary": {
+    "kind": "coordinates",
+    "label": "M31 catalog center",
+    "ra_deg": 10.684708,
+    "dec_deg": 41.26875
+  },
+  "observer": {
+    "location_name": "Shanghai",
+    "longitude": 121.4737,
+    "latitude": 31.2304,
+    "timezone": "Asia/Shanghai"
+  },
+  "time_range": {
+    "start": "2026-03-20 19:00:00",
+    "end": "2026-03-20 23:00:00"
+  },
+  "interval_minutes": 20
+}

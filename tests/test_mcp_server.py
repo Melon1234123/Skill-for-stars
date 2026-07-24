@@ -124,6 +124,25 @@ def load_observation_payload() -> dict[str, object]:
     )
 
 
+def generic_coordinate_task() -> dict[str, object]:
+    return {
+        "task_type": "astronomical_relationship",
+        "primary": {"kind": "coordinates", "label": "A", "ra_deg": 10, "dec_deg": 20},
+        "secondary": {"kind": "coordinates", "label": "B", "ra_deg": 11, "dec_deg": 21},
+        "observer": {
+            "location_name": "Shanghai",
+            "longitude": 121.4737,
+            "latitude": 31.2304,
+            "timezone": "Asia/Shanghai",
+        },
+        "time_range": {
+            "start": "2026-01-10T18:00:00+08:00",
+            "end": "2026-01-10T18:20:00+08:00",
+        },
+        "interval_minutes": 20,
+    }
+
+
 def make_service_with_fake_outreach_providers(
     tmp_path: Path,
     *,
@@ -188,12 +207,103 @@ def test_relationship_tool_writes_results_as_server_resources(tmp_path) -> None:
 
     assert result["ok"] is True
     assert result["sample_count"] > 0
+    assert set(result) == {
+        "ok",
+        "run_id",
+        "sample_count",
+        "minimum_separation_deg",
+        "maximum_separation_deg",
+        "resources",
+    }
     assert result["resources"]["relationship"] == (
         f"starskill://runs/{result['run_id']}/relationship"
     )
+    metadata = json.loads(service.read_run_resource(result["run_id"], "relationship"))
+    assert "schema_version" not in metadata["settings"]
     assert "angular_separation_deg" in service.read_run_resource(
         result["run_id"], "relationship"
     )
+
+
+def test_mcp_generic_relationship_publishes_only_run_resources(tmp_path: Path) -> None:
+    service = StarSkillMcpService(
+        runs_root=tmp_path / "runs",
+        target_cache_dir=tmp_path / "target-cache",
+        image_cache_dir=tmp_path / "image-cache",
+        clock=lambda: datetime(2026, 7, 23, 8, 0, tzinfo=timezone.utc),
+    )
+
+    result = service.calculate_astronomical_relationship(generic_coordinate_task())
+
+    assert result["ok"] is True
+    assert result["resources"]["relationship"].startswith("starskill://runs/")
+    assert result["resources"]["relationship-table"].startswith("starskill://runs/")
+    assert "output_dir" not in result
+    metadata = json.loads(
+        service.read_run_resource(result["run_id"], "relationship")
+    )
+    assert metadata["settings"]["schema_version"] == "2.0"
+
+
+def test_mcp_generic_target_resolution_is_pure_for_coordinates(tmp_path: Path) -> None:
+    service = StarSkillMcpService(
+        runs_root=tmp_path / "runs",
+        target_cache_dir=tmp_path / "target-cache",
+        image_cache_dir=tmp_path / "image-cache",
+        target_backend_factory=lambda: pytest.fail("coordinates must not query SIMBAD"),
+        clock=lambda: datetime(2026, 7, 23, 8, 0, tzinfo=timezone.utc),
+    )
+
+    result = service.resolve_astronomy_target(
+        {"kind": "coordinates", "label": "A", "ra_deg": 10, "dec_deg": 20}
+    )
+
+    assert result["ok"] is True
+    assert result["target"]["source"]["provider"] == "user_coordinates"
+    assert not (tmp_path / "runs").exists()
+
+
+def test_mcp_generic_target_resolution_supports_solar_system_and_simbad(
+    tmp_path: Path,
+) -> None:
+    service = StarSkillMcpService(
+        runs_root=tmp_path / "runs",
+        target_cache_dir=tmp_path / "target-cache",
+        image_cache_dir=tmp_path / "image-cache",
+        target_backend_factory=StaticTargetBackend,
+        clock=lambda: datetime(2026, 7, 23, 8, 0, tzinfo=timezone.utc),
+    )
+
+    solar = service.resolve_astronomy_target(
+        {"kind": "solar_system", "body": "mars"}
+    )
+    simbad = service.resolve_astronomy_target({"kind": "simbad", "name": "M42"})
+
+    assert (solar["target"]["motion"], solar["target"]["label"]) == (
+        "dynamic",
+        "Mars",
+    )
+    assert simbad["target"]["catalog_target"]["canonical_name"] == "M 42"
+    assert not (tmp_path / "runs").exists()
+
+
+def test_mcp_generic_relationship_returns_unsupported_body_failure(
+    tmp_path: Path,
+) -> None:
+    service = StarSkillMcpService(
+        runs_root=tmp_path / "runs",
+        target_cache_dir=tmp_path / "target-cache",
+        image_cache_dir=tmp_path / "image-cache",
+    )
+    task = generic_coordinate_task()
+    task["primary"] = {"kind": "solar_system", "body": "pluto"}
+
+    result = service.calculate_astronomical_relationship(task)
+
+    assert result["ok"] is False
+    assert result["error"] == "unsupported_solar_system_body"
+    assert result["run_id"]
+    assert "output_dir" not in result
 
 
 def test_image_tool_writes_provenance_as_a_server_resource(tmp_path) -> None:
@@ -318,6 +428,7 @@ def test_stdio_server_advertises_supported_tools_and_run_resources(tmp_path) -> 
             "resolve_astronomy_target",
             "plan_observation",
             "calculate_moon_jupiter_relationship",
+            "calculate_astronomical_relationship",
             "fetch_m51_sdss_image",
             "get_observing_conditions",
             "recommend_tonight",

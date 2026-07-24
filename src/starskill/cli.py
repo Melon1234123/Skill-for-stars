@@ -8,7 +8,7 @@ import sys
 from collections.abc import Sequence
 from pathlib import Path
 
-from pydantic import ValidationError
+from pydantic import TypeAdapter, ValidationError
 
 from starskill.ephemeris_calculator import (
     calculate_ephemeris,
@@ -32,15 +32,19 @@ from starskill.public_data_fetcher import (
     write_public_image_metadata,
 )
 from starskill.schemas import (
+    AstronomicalRelationshipTask,
     EphemerisResult,
     ObservationTask,
     ResolvedTarget,
     SDSSImageRequest,
     SolarSystemRelationshipTask,
+    TargetRef,
     VisibilityCriteria,
 )
 from starskill.solar_system_relationship import (
+    calculate_astronomical_relationship,
     calculate_solar_system_relationship,
+    write_astronomical_relationship_csv,
     write_relationship_csv,
     write_relationship_json,
 )
@@ -53,15 +57,31 @@ from starskill.target_resolver import (
     InvalidTargetNameError,
     SimbadBackend,
     TargetNotFoundError,
+    TargetResolutionError,
     TargetServiceError,
     resolve_target,
 )
+from starskill.target_references import resolve_target_ref
 from starskill.visualizer import plot_visibility
 from starskill.web_api import HttpCatalogFetcher, run_web_server
 
 
 class InputValidationError(ValueError):
     """A user-provided input file cannot be parsed as a JSON object."""
+
+
+TARGET_REF_ADAPTER = TypeAdapter(TargetRef)
+RELATIONSHIP_TASK_ADAPTER = TypeAdapter(
+    AstronomicalRelationshipTask | SolarSystemRelationshipTask
+)
+TARGET_BEARING_TASK_ADAPTER = TypeAdapter(
+    ObservationTask | AstronomicalRelationshipTask | SolarSystemRelationshipTask
+)
+TARGET_BEARING_TASK_MODELS = {
+    "observation_plan": ObservationTask,
+    "astronomical_relationship": AstronomicalRelationshipTask,
+    "solar_system_relationship": SolarSystemRelationshipTask,
+}
 
 
 def load_json_object(path: Path) -> dict[str, object]:
@@ -75,7 +95,7 @@ def load_json_object(path: Path) -> dict[str, object]:
 
 
 def print_resolution_error(
-    exc: InvalidTargetNameError | TargetNotFoundError | TargetServiceError,
+    exc: TargetResolutionError,
 ) -> None:
     print(
         json.dumps(
@@ -85,6 +105,16 @@ def print_resolution_error(
         ),
         file=sys.stderr,
     )
+
+
+def resolution_error_exit_code(exc: TargetResolutionError) -> int:
+    if isinstance(exc, InvalidTargetNameError):
+        return 2
+    if isinstance(exc, TargetNotFoundError):
+        return 3
+    if isinstance(exc, TargetServiceError):
+        return 4
+    return 2
 
 
 def print_validation_error(exc: ValidationError) -> None:
@@ -174,11 +204,23 @@ def main(argv: Sequence[str] | None = None) -> int:
     resolve_parser.add_argument("--cache-dir", type=Path, default=Path("cache/targets"))
     resolve_parser.add_argument("--output", type=Path)
 
+    resolve_target_parser = commands.add_parser(
+        "resolve-target", help="resolve a typed astronomy target reference"
+    )
+    resolve_target_parser.add_argument("input_path", type=Path)
+    resolve_target_parser.add_argument(
+        "--cache-dir", type=Path, default=Path("cache/targets")
+    )
+    resolve_target_parser.add_argument("--output", type=Path)
+
     ephemeris_parser = commands.add_parser(
         "ephemeris", help="calculate target, Sun, and Moon ephemerides"
     )
     ephemeris_parser.add_argument("input_path", type=Path)
-    ephemeris_parser.add_argument("--target-file", type=Path, required=True)
+    ephemeris_parser.add_argument("--target-file", type=Path)
+    ephemeris_parser.add_argument(
+        "--cache-dir", type=Path, default=Path("cache/targets")
+    )
     ephemeris_parser.add_argument("--output", type=Path, required=True)
     ephemeris_parser.add_argument("--metadata", type=Path, required=True)
 
@@ -207,6 +249,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     relationship_parser.add_argument("input_path", type=Path)
     relationship_parser.add_argument("--output", type=Path, required=True)
     relationship_parser.add_argument("--metadata", type=Path, required=True)
+    relationship_parser.add_argument(
+        "--cache-dir", type=Path, default=Path("cache/targets")
+    )
 
     image_parser = commands.add_parser(
         "fetch-image", help="fetch and process the bounded SDSS DR18 M51 cutout"
@@ -295,6 +340,38 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
         return 0
 
+    if args.command == "resolve-target":
+        try:
+            reference = TARGET_REF_ADAPTER.validate_python(
+                load_json_object(args.input_path)
+            )
+        except InputValidationError as exc:
+            print_input_validation_error(exc)
+            return 2
+        except ValidationError as exc:
+            print_validation_error(exc)
+            return 2
+        try:
+            target = resolve_target_ref(
+                reference,
+                backend=SimbadBackend() if reference.kind == "simbad" else None,
+                cache_dir=args.cache_dir,
+            )
+        except TargetResolutionError as exc:
+            print_resolution_error(exc)
+            return resolution_error_exit_code(exc)
+        if args.output:
+            args.output.parent.mkdir(parents=True, exist_ok=True)
+            args.output.write_text(target.model_dump_json(indent=2), encoding="utf-8")
+        print(
+            json.dumps(
+                {"resolved": True, "target": target.model_dump(mode="json")},
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
+        return 0
+
     if args.command == "plan":
         try:
             ephemeris = EphemerisResult.model_validate(
@@ -337,12 +414,29 @@ def main(argv: Sequence[str] | None = None) -> int:
             print_input_validation_error(exc)
             return 2
         try:
-            relationship_task = SolarSystemRelationshipTask.model_validate(payload)
+            relationship_task = RELATIONSHIP_TASK_ADAPTER.validate_python(payload)
         except ValidationError as exc:
             print_validation_error(exc)
             return 2
-        result = calculate_solar_system_relationship(relationship_task)
-        write_relationship_csv(result, args.output)
+        if isinstance(relationship_task, SolarSystemRelationshipTask):
+            result = calculate_solar_system_relationship(relationship_task)
+            write_relationship_csv(result, args.output)
+        else:
+            try:
+                result = calculate_astronomical_relationship(
+                    relationship_task,
+                    target_backend=(
+                        SimbadBackend()
+                        if "simbad"
+                        in {relationship_task.primary.kind, relationship_task.secondary.kind}
+                        else None
+                    ),
+                    cache_dir=args.cache_dir,
+                )
+            except TargetResolutionError as exc:
+                print_resolution_error(exc)
+                return resolution_error_exit_code(exc)
+            write_astronomical_relationship_csv(result, args.output)
         write_relationship_json(result, args.metadata)
         separations = [sample.angular_separation_deg for sample in result.samples]
         print(
@@ -414,6 +508,30 @@ def main(argv: Sequence[str] | None = None) -> int:
     except InputValidationError as exc:
         print_input_validation_error(exc)
         return 2
+    if args.command == "validate":
+        discriminator = payload.get("task_type", "observation_plan")
+        task_model = TARGET_BEARING_TASK_MODELS.get(discriminator)
+        if task_model is None:
+            try:
+                TARGET_BEARING_TASK_ADAPTER.validate_python(payload)
+            except ValidationError as exc:
+                print_validation_error(exc)
+                return 2
+            raise AssertionError("unreachable task discriminator")
+        try:
+            task = task_model.model_validate(payload)
+        except ValidationError as exc:
+            print_validation_error(exc)
+            return 2
+        print(
+            json.dumps(
+                {"valid": True, "task": task.model_dump(mode="json")},
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
+        return 0
+
     try:
         task = ObservationTask.model_validate(payload)
     except ValidationError as exc:
@@ -421,14 +539,29 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 2
 
     if args.command == "ephemeris":
-        try:
-            target = ResolvedTarget.model_validate(load_json_object(args.target_file))
-        except InputValidationError as exc:
-            print_input_validation_error(exc)
-            return 2
-        except ValidationError as exc:
-            print_validation_error(exc)
-            return 2
+        if args.target_file is not None:
+            try:
+                target = ResolvedTarget.model_validate(
+                    load_json_object(args.target_file)
+                )
+            except InputValidationError as exc:
+                print_input_validation_error(exc)
+                return 2
+            except ValidationError as exc:
+                print_validation_error(exc)
+                return 2
+        else:
+            try:
+                target = resolve_target_ref(
+                    task.target,
+                    backend=(
+                        SimbadBackend() if task.target.kind == "simbad" else None
+                    ),
+                    cache_dir=args.cache_dir,
+                )
+            except TargetResolutionError as exc:
+                print_resolution_error(exc)
+                return resolution_error_exit_code(exc)
         result = calculate_ephemeris(task, target)
         write_ephemeris_csv(result, args.output)
         write_ephemeris_json(result, args.metadata)
@@ -486,11 +619,4 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
         return 0 if outcome.status == "success" else 5
 
-    print(
-        json.dumps(
-            {"valid": True, "task": task.model_dump(mode="json")},
-            ensure_ascii=False,
-            indent=2,
-        )
-    )
-    return 0
+    raise AssertionError(f"unhandled command: {args.command}")
