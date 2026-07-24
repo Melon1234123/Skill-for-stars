@@ -4,6 +4,9 @@ import json
 import warnings
 
 import pytest
+from astropy import units as u
+from astropy.coordinates import AltAz, EarthLocation, get_body
+from astropy.time import Time
 from astropy.utils.data import CacheMissingWarning
 from pydantic import ValidationError
 
@@ -122,8 +125,8 @@ def make_observation_task(
     )
 
 
-def make_resolved_m42() -> schemas.ResolvedTarget:
-    return schemas.ResolvedTarget.model_validate(
+def make_resolved_m42() -> schemas.ResolvedAstronomicalTarget:
+    catalog_target = schemas.ResolvedTarget.model_validate(
         {
             "input_name": "M42",
             "query_name": "M 42",
@@ -140,6 +143,63 @@ def make_resolved_m42() -> schemas.ResolvedTarget:
                 "from_cache": False,
             },
         }
+    )
+    return schemas.ResolvedAstronomicalTarget(
+        label=catalog_target.canonical_name,
+        kind="simbad",
+        motion="fixed_icrs",
+        ra_deg=catalog_target.ra_deg,
+        dec_deg=catalog_target.dec_deg,
+        source=schemas.AstronomicalTargetSource(
+            provider="simbad",
+            from_cache=False,
+            accessed_at=catalog_target.source.accessed_at,
+        ),
+        catalog_target=catalog_target,
+    )
+
+
+def make_resolved_mars() -> schemas.ResolvedAstronomicalTarget:
+    return schemas.ResolvedAstronomicalTarget.model_validate(
+        {
+            "label": "Mars",
+            "kind": "solar_system",
+            "motion": "dynamic",
+            "source": {
+                "provider": "astropy_builtin_ephemeris",
+                "from_cache": False,
+                "accessed_at": "2026-07-18T12:20:49Z",
+            },
+        }
+    )
+
+
+def test_ephemeris_uses_dynamic_mars_position_at_each_sample() -> None:
+    task = schemas.ObservationTask.model_validate(
+        {
+            **make_observation_task(
+                end="2026-01-11 02:00:00"
+            ).model_dump(mode="json"),
+            "target": {"kind": "solar_system", "body": "mars"},
+        }
+    )
+
+    result = starskill.calculate_ephemeris(task, make_resolved_mars())
+
+    times = Time([sample.timestamp_utc for sample in result.samples], scale="utc")
+    location = EarthLocation(
+        lon=task.observer.longitude * u.deg,
+        lat=task.observer.latitude * u.deg,
+        height=0 * u.m,
+    )
+    frame = AltAz(obstime=times, location=location, pressure=0 * u.hPa)
+    expected = get_body("mars", times, location=location).transform_to(frame)
+    assert result.target.motion == "dynamic"
+    assert [sample.target_altitude_deg for sample in result.samples] == pytest.approx(
+        expected.alt.to_value(u.deg), abs=1e-9
+    )
+    assert [sample.target_azimuth_deg for sample in result.samples] == pytest.approx(
+        expected.az.to_value(u.deg), abs=1e-9
     )
 
 
@@ -239,7 +299,8 @@ def test_write_ephemeris_json_preserves_provenance_and_settings(tmp_path) -> Non
     starskill.write_ephemeris_json(result, output_path)
 
     payload = json.loads(output_path.read_text(encoding="utf-8"))
-    assert payload["target"]["source"]["database"] == "SIMBAD"
+    assert payload["target"]["source"]["provider"] == "simbad"
+    assert payload["target"]["catalog_target"]["source"]["database"] == "SIMBAD"
     assert payload["observer"]["timezone"] == "Asia/Shanghai"
     assert payload["settings"] == {
         "calculated_at": "2026-07-18T12:30:00Z",

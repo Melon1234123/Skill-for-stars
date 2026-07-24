@@ -62,19 +62,20 @@ class OutputOptions(InputModel):
 
 class ObservationTask(InputModel):
     task_type: Literal["observation_plan"] = "observation_plan"
-    target: str
+    target: "str | TargetRef"
     observer: Observer
     time_range: TimeRange
     interval_minutes: int = Field(default=10, ge=1, le=120)
     output: OutputOptions = Field(default_factory=OutputOptions)
 
-    @field_validator("target")
-    @classmethod
-    def target_must_not_be_blank(cls, value: str) -> str:
-        value = value.strip()
-        if not value:
-            raise ValueError("target must not be blank")
-        return value
+    @model_validator(mode="after")
+    def normalize_legacy_target(self) -> "ObservationTask":
+        if isinstance(self.target, str):
+            name = self.target.strip()
+            if not name:
+                raise ValueError("target must not be blank")
+            self.target = SimbadTargetRef(kind="simbad", name=name)
+        return self
 
 
 class TargetSource(InputModel):
@@ -130,7 +131,7 @@ class EphemerisSettings(InputModel):
 
 
 class EphemerisResult(InputModel):
-    target: ResolvedTarget
+    target: "ResolvedAstronomicalTarget"
     observer: Observer
     interval_minutes: int = Field(ge=1)
     settings: EphemerisSettings
@@ -164,7 +165,7 @@ class ObservationWindow(InputModel):
 
 
 class ObservationPlanResult(InputModel):
-    target: ResolvedTarget
+    target: "ResolvedAstronomicalTarget"
     observer: Observer
     interval_minutes: int = Field(ge=1)
     source_ephemeris_settings: EphemerisSettings
@@ -192,7 +193,7 @@ class PipelineManifest(InputModel):
     completed_at: datetime
     input_task: ObservationTask
     cache_hit: bool
-    target_source: TargetSource | None
+    target_source: "TargetSource | AstronomicalTargetSource | None"
     dependencies: dict[str, str]
     artifacts: list[ArtifactRecord]
     issues: list[PipelineIssue]
@@ -298,6 +299,11 @@ class ResolvedAstronomicalTarget(InputModel):
     dec_deg: float | None = Field(default=None, ge=-90, le=90, allow_inf_nan=False)
     source: AstronomicalTargetSource
     catalog_target: ResolvedTarget | None = None
+
+    @property
+    def canonical_name(self) -> str:
+        """Retain the display-name attribute used by observation renderers."""
+        return self.label
 
     @model_validator(mode="after")
     def motion_must_match_kind_and_coordinates(self) -> "ResolvedAstronomicalTarget":

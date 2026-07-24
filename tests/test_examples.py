@@ -1,7 +1,7 @@
 import json
 from pathlib import Path
 
-from starskill.schemas import ObservationTask
+from starskill.schemas import ObservationTask, SimbadTargetRef
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -14,5 +14,5 @@ def test_m42_beijing_example_matches_input_schema() -> None:
 
     task = ObservationTask.model_validate(payload)
 
-    assert task.target == "M42"
+    assert task.target == SimbadTargetRef(kind="simbad", name="M42")
     assert task.observer.timezone == "Asia/Shanghai"

@@ -3,12 +3,14 @@ from datetime import datetime, timezone
 from starskill.light_pollution import BLACK_MARBLE_PROVIDER
 from starskill.recommendations import HUMAN_REVIEW_ITEMS, recommend_tonight
 from starskill.schemas import (
+    AstronomicalTargetSource,
     EphemerisSettings,
     ExternalSource,
     LightPollutionResult,
     ObservationPlanResult,
     ObservationWindow,
     Observer,
+    ResolvedAstronomicalTarget,
     ResolvedTarget,
     TargetSource,
     VisibilityCriteria,
@@ -29,16 +31,29 @@ def make_plan() -> ObservationPlanResult:
         accessed_at=WINDOW_START,
         from_cache=False,
     )
+    catalog_target = ResolvedTarget(
+        input_name="M42",
+        query_name="M 42",
+        canonical_name="M 42",
+        ra_deg=83.8201,
+        dec_deg=-5.3876,
+        object_type="HII",
+        aliases=["M 42"],
+        source=source,
+    )
     return ObservationPlanResult(
-        target=ResolvedTarget(
-            input_name="M42",
-            query_name="M 42",
-            canonical_name="M 42",
+        target=ResolvedAstronomicalTarget(
+            label="M 42",
+            kind="simbad",
+            motion="fixed_icrs",
             ra_deg=83.8201,
             dec_deg=-5.3876,
-            object_type="HII",
-            aliases=["M 42"],
-            source=source,
+            source=AstronomicalTargetSource(
+                provider="simbad",
+                from_cache=False,
+                accessed_at=WINDOW_START,
+            ),
+            catalog_target=catalog_target,
         ),
         observer=Observer(
             location_name="Beijing",

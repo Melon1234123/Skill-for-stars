@@ -181,7 +181,7 @@ def test_validate_command_prints_canonical_task(tmp_path, capsys) -> None:
 
     assert exit_code == 0
     assert output["valid"] is True
-    assert output["task"]["target"] == "M42"
+    assert output["task"]["target"] == {"kind": "simbad", "name": "M42"}
     assert output["task"]["interval_minutes"] == 10
 
 

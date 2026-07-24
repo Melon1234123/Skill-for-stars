@@ -4,7 +4,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from starskill.ephemeris_calculator import calculate_ephemeris, write_ephemeris_json
-from starskill.schemas import ObservationTask, ResolvedTarget
+from starskill.schemas import (
+    AstronomicalTargetSource,
+    ObservationTask,
+    ResolvedAstronomicalTarget,
+    ResolvedTarget,
+)
 
 
 def make_m42_task() -> ObservationTask:
@@ -48,10 +53,27 @@ def make_resolved_m42() -> ResolvedTarget:
     )
 
 
+def make_resolved_astronomical_m42() -> ResolvedAstronomicalTarget:
+    catalog_target = make_resolved_m42()
+    return ResolvedAstronomicalTarget(
+        label=catalog_target.canonical_name,
+        kind="simbad",
+        motion="fixed_icrs",
+        ra_deg=catalog_target.ra_deg,
+        dec_deg=catalog_target.dec_deg,
+        source=AstronomicalTargetSource(
+            provider="simbad",
+            from_cache=False,
+            accessed_at=catalog_target.source.accessed_at,
+        ),
+        catalog_target=catalog_target,
+    )
+
+
 def make_m42_ephemeris():
     return calculate_ephemeris(
         make_m42_task(),
-        make_resolved_m42(),
+        make_resolved_astronomical_m42(),
         clock=lambda: datetime(2026, 7, 18, 12, 30, tzinfo=timezone.utc),
     )
 

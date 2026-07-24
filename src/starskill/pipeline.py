@@ -31,8 +31,8 @@ from starskill.schemas import (
 from starskill.target_resolver import (
     TargetBackend,
     TargetResolutionError,
-    resolve_target,
 )
+from starskill.target_references import resolve_target_ref
 from starskill.visualizer import plot_visibility
 
 
@@ -85,8 +85,7 @@ def _write_report(
             "",
             "## 计算事实",
             "",
-            f"- 目标：{plan.target.canonical_name}",
-            f"- ICRS 坐标：赤经 {plan.target.ra_deg:.6f}°，赤纬 {plan.target.dec_deg:.6f}°",
+            f"- 目标：{plan.target.label}",
             f"- 采样：{len(plan.samples)} 个，每 {plan.interval_minutes} 分钟一次",
             f"- 目标最高高度角：{peak_altitude:.6f}°",
             "",
@@ -96,6 +95,14 @@ def _write_report(
             f"- 最高太阳高度角：{plan.criteria.max_sun_altitude_deg:g}°",
             f"- 候选观测窗口：{len(plan.windows)} 个",
         ]
+        if plan.target.motion == "fixed_icrs":
+            assert plan.target.ra_deg is not None and plan.target.dec_deg is not None
+            lines.insert(
+                6,
+                f"- ICRS 坐标：赤经 {plan.target.ra_deg:.6f}°，赤纬 {plan.target.dec_deg:.6f}°",
+            )
+        else:
+            lines.insert(6, "- 坐标：按各采样时刻使用 Astropy 内置太阳系星历计算")
         for window in plan.windows:
             lines.append(
                 f"- {window.start_local.isoformat()} 至 {window.end_local.isoformat()} "
@@ -123,8 +130,7 @@ def _write_report(
         "",
         "## Calculated Facts",
         "",
-        f"- Target: {plan.target.canonical_name}",
-        f"- ICRS coordinates: RA {plan.target.ra_deg:.6f} deg, Dec {plan.target.dec_deg:.6f} deg",
+        f"- Target: {plan.target.label}",
         f"- Samples: {len(plan.samples)} at {plan.interval_minutes}-minute intervals",
         f"- Peak target altitude: {peak_altitude:.6f} deg",
         "",
@@ -134,6 +140,14 @@ def _write_report(
         f"- Maximum Sun altitude: {plan.criteria.max_sun_altitude_deg:g} deg",
         f"- Candidate windows: {len(plan.windows)}",
     ]
+    if plan.target.motion == "fixed_icrs":
+        assert plan.target.ra_deg is not None and plan.target.dec_deg is not None
+        lines.insert(
+            6,
+            f"- ICRS coordinates: RA {plan.target.ra_deg:.6f} deg, Dec {plan.target.dec_deg:.6f} deg",
+        )
+    else:
+        lines.insert(6, "- Coordinates: Astropy built-in ephemeris at each sample time")
     for window in plan.windows:
         lines.append(
             f"- {window.start_local.isoformat()} to {window.end_local.isoformat()} "
@@ -171,8 +185,8 @@ def run_pipeline(
     task: ObservationTask,
     *,
     output_dir: Path,
-    cache_dir: Path,
-    backend: TargetBackend,
+    cache_dir: Path | None,
+    backend: TargetBackend | None,
     criteria: VisibilityCriteria | None = None,
     plotter: Callable[[ObservationPlanResult, Path], None] = plot_visibility,
     clock: Callable[[], datetime] = utc_now,
@@ -188,7 +202,7 @@ def run_pipeline(
     input_path = output_dir / "input.json"
     input_path.write_text(task.model_dump_json(indent=2), encoding="utf-8")
     try:
-        target = resolve_target(
+        target = resolve_target_ref(
             task.target,
             backend=backend,
             cache_dir=cache_dir,
@@ -264,14 +278,18 @@ def run_pipeline(
     status = "degraded" if issues else "success"
     manifest = PipelineManifest(
         run_id=_run_id(
-            started_at, target.query_name.lower().replace(" ", "-")
+            started_at, target.label.lower().replace(" ", "-")
         ),
         status=status,
         started_at=started_at,
         completed_at=clock(),
         input_task=task,
         cache_hit=target.source.from_cache,
-        target_source=target.source,
+        target_source=(
+            target.catalog_target.source
+            if target.catalog_target is not None
+            else target.source
+        ),
         dependencies=_dependency_versions(),
         artifacts=[_artifact_record(output_dir, path) for path in artifact_paths],
         issues=issues,

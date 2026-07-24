@@ -7,7 +7,7 @@ import pytest
 
 import starskill
 from starskill.recommendations import HUMAN_REVIEW_ITEMS
-from starskill.schemas import ObservationTask
+from starskill.schemas import ObservationTask, SimbadTargetRef
 from starskill.target_resolver import TargetServiceError
 
 
@@ -36,6 +36,11 @@ class FailingPipelineBackend(StaticPipelineBackend):
         raise TimeoutError("SIMBAD timed out")
 
 
+class FailIfCalledBackend(StaticPipelineBackend):
+    def query_object(self, query_name: str) -> dict:
+        raise AssertionError("coordinate targets must not query SIMBAD")
+
+
 def load_task() -> ObservationTask:
     return ObservationTask.model_validate_json(
         (PROJECT_ROOT / "examples/observation_m42_beijing.json").read_text(
@@ -46,6 +51,44 @@ def load_task() -> ObservationTask:
 
 def fixed_clock() -> datetime:
     return datetime(2026, 7, 19, 1, 0, tzinfo=timezone.utc)
+
+
+def test_observation_task_normalizes_legacy_target_to_simbad_ref() -> None:
+    task = load_task()
+
+    assert isinstance(task.target, SimbadTargetRef)
+    assert task.target == SimbadTargetRef(kind="simbad", name="M42")
+
+
+def test_run_pipeline_preserves_user_coordinate_provenance(tmp_path) -> None:
+    task_payload = load_task().model_dump(mode="json")
+    task_payload["target"] = {
+        "kind": "coordinates",
+        "label": "A",
+        "ra_deg": 10,
+        "dec_deg": 20,
+    }
+    task = ObservationTask.model_validate(task_payload)
+    output_dir = tmp_path / "run"
+
+    outcome = starskill.run_pipeline(
+        task,
+        output_dir=output_dir,
+        cache_dir=tmp_path / "cache",
+        backend=FailIfCalledBackend(),
+        clock=fixed_clock,
+    )
+
+    result = json.loads((output_dir / "result.json").read_text(encoding="utf-8"))
+    resolved = json.loads(
+        (output_dir / "intermediate/target_resolved.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert outcome.status in {"success", "degraded"}
+    assert result["target"]["source"]["provider"] == "user_coordinates"
+    assert resolved["source"]["provider"] == "user_coordinates"
+    assert resolved["catalog_target"] is None
 
 
 def test_run_pipeline_generates_chinese_report_for_zh_cn_task(tmp_path) -> None:
@@ -76,9 +119,17 @@ def test_run_pipeline_generates_chinese_report_for_zh_cn_task(tmp_path) -> None:
     assert {path.relative_to(output_dir).as_posix() for path in output_dir.rglob("*") if path.is_file()} == expected
 
     manifest = json.loads((output_dir / "run.json").read_text(encoding="utf-8"))
+    resolved_target = json.loads(
+        (output_dir / "intermediate/target_resolved.json").read_text(
+            encoding="utf-8"
+        )
+    )
     assert manifest["status"] == "success"
     assert manifest["cache_hit"] is False
     assert manifest["target_source"]["database"] == "SIMBAD"
+    assert resolved_target["kind"] == "simbad"
+    assert resolved_target["catalog_target"]["canonical_name"] == "M 42"
+    assert resolved_target["catalog_target"]["source"]["database"] == "SIMBAD"
     assert manifest["dependencies"]["astropy"] == "7.2.0"
     assert manifest["issues"] == []
     for artifact in manifest["artifacts"]:

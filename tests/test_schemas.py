@@ -7,6 +7,7 @@ from pydantic import ValidationError
 from starskill.schemas import (
     ObservingConditionsRequest,
     ObservationTask,
+    SimbadTargetRef,
     TonightRecommendationRequest,
 )
 
@@ -32,7 +33,7 @@ def valid_payload() -> dict:
 def test_valid_observation_task_uses_documented_defaults(valid_payload: dict) -> None:
     task = ObservationTask.model_validate(valid_payload)
 
-    assert task.target == "M42"
+    assert task.target == SimbadTargetRef(kind="simbad", name="M42")
     assert task.interval_minutes == 10
     assert task.time_range.start == datetime(2026, 1, 10, 18, 0)
     assert task.output.language == "zh-CN"

@@ -16,10 +16,12 @@ from astropy.time import Time
 from astropy.utils import iers
 
 from starskill.schemas import (
+    AstronomicalTargetSource,
     EphemerisResult,
     EphemerisSample,
     EphemerisSettings,
     ObservationTask,
+    ResolvedAstronomicalTarget,
     ResolvedTarget,
 )
 
@@ -82,11 +84,13 @@ def build_time_grid(
 
 def calculate_ephemeris(
     task: ObservationTask,
-    target: ResolvedTarget,
+    target: ResolvedAstronomicalTarget,
     *,
     clock: Callable[[], datetime] = utc_now,
 ) -> EphemerisResult:
     """Calculate geometric AltAz samples with bundled, offline IERS data."""
+    if isinstance(target, ResolvedTarget):
+        target = _generalize_catalog_target(target)
     points = build_time_grid(
         start=task.time_range.start,
         end=task.time_range.end,
@@ -101,17 +105,17 @@ def calculate_ephemeris(
                 lat=task.observer.latitude * u.deg,
                 height=0 * u.m,
             )
-            target_icrs = SkyCoord(
-                ra=target.ra_deg * u.deg,
-                dec=target.dec_deg * u.deg,
-                frame="icrs",
-            )
             horizontal_frame = AltAz(
                 obstime=times,
                 location=location,
                 pressure=0 * u.hPa,
             )
-            target_altaz = target_icrs.transform_to(horizontal_frame)
+            target_altaz = _target_altaz(
+                target,
+                times,
+                location,
+                horizontal_frame,
+            )
             sun_altaz = get_sun(times).transform_to(horizontal_frame)
             moon_altaz = get_body("moon", times, location=location).transform_to(
                 horizontal_frame
@@ -140,6 +144,42 @@ def calculate_ephemeris(
         ),
         samples=samples,
     )
+
+
+def _generalize_catalog_target(target: ResolvedTarget) -> ResolvedAstronomicalTarget:
+    return ResolvedAstronomicalTarget(
+        label=target.canonical_name,
+        kind="simbad",
+        motion="fixed_icrs",
+        ra_deg=target.ra_deg,
+        dec_deg=target.dec_deg,
+        source=AstronomicalTargetSource(
+            provider="simbad_cache" if target.source.from_cache else "simbad",
+            from_cache=target.source.from_cache,
+            accessed_at=target.source.accessed_at,
+        ),
+        catalog_target=target,
+    )
+
+
+def _target_altaz(
+    target: ResolvedAstronomicalTarget,
+    times: Time,
+    location: EarthLocation,
+    frame: AltAz,
+) -> SkyCoord:
+    if target.motion == "dynamic":
+        assert target.kind == "solar_system"
+        return get_body(
+            target.label.casefold(), times, location=location
+        ).transform_to(frame)
+
+    assert target.ra_deg is not None and target.dec_deg is not None
+    return SkyCoord(
+        ra=target.ra_deg * u.deg,
+        dec=target.dec_deg * u.deg,
+        frame="icrs",
+    ).transform_to(frame)
 
 
 def write_ephemeris_csv(result: EphemerisResult, output_path: Path) -> None:
