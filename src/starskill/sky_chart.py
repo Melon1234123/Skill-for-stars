@@ -62,6 +62,7 @@ from starskill.sky_chart_catalog import (
     select_catalog,
 )
 from starskill.sky_chart_targets import ResolvedSkyTarget, SkyChartTargetResolver
+from starskill.target_references import UnsupportedSolarSystemBodyError
 from starskill.target_resolver import (
     InvalidTargetNameError,
     TargetBackend,
@@ -659,7 +660,7 @@ class SkyChartService:
         warning: str | None = None
         try:
             resolved = self._target_resolver.resolve(request.target)
-        except (InvalidTargetNameError, TargetNotFoundError):
+        except (InvalidTargetNameError, TargetNotFoundError, UnsupportedSolarSystemBodyError):
             resolved = None
             warning = "target_unresolved"
         except TargetServiceError:

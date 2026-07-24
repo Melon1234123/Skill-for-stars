@@ -323,6 +323,31 @@ def test_target_resolution_failures_become_stable_warning_only(
     assert "private detail" not in serialized
 
 
+@pytest.mark.parametrize("body", ["Pluto", "Ceres"])
+def test_unsupported_solar_system_target_becomes_unresolved_warning(
+    body: str,
+) -> None:
+    request = FIXED_REQUEST.model_copy(
+        update={
+            "target": FIXED_REQUEST.target.model_copy(
+                update={"mode": "name", "name": body, "ra_deg": None, "dec_deg": None}
+            )
+        }
+    )
+
+    def fail_if_called(_name: str):
+        raise AssertionError("external resolver must not receive solar-system body")
+
+    chart = SkyChartService(
+        full_catalog_cache=EmptyFullCache(),
+        target_resolver=SkyChartTargetResolver(fail_if_called),
+        utc_clock=lambda: FIXED_CREATED_AT,
+    ).render(request)
+
+    assert chart.metadata.objects.target is None
+    assert chart.metadata.warnings == ["target_unresolved"]
+
+
 def test_target_cache_write_failure_becomes_stable_nonfatal_warning(
     tmp_path: Path,
 ) -> None:

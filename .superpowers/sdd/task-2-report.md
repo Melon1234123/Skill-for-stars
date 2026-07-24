@@ -130,3 +130,43 @@ The deterministic chart alias registry now includes `pluto`, `ceres`, `haumea`,
 resolver, which retains `unsupported_solar_system_body` and never invokes the
 injected external/SIMBAD resolver. Existing unrecognized names continue to use
 the external resolver.
+
+## Follow-up Review Fix: Service Contains Unsupported Solar-System Bodies
+
+### RED Evidence
+
+Command:
+
+```bash
+.venv/bin/python -m pytest tests/test_sky_chart.py -q
+```
+
+Result: `2 failed, 27 passed`. The new parameterized Pluto/Ceres service
+regression reached `resolve_target_ref` and raised
+`UnsupportedSolarSystemBodyError` from `SkyChartService.render()`, proving the
+service did not contain this existing target-resolution failure. The injected
+external resolver was not invoked.
+
+### GREEN Evidence
+
+Command:
+
+```bash
+.venv/bin/python -m pytest tests/test_sky_chart_targets.py tests/test_sky_chart.py -q
+```
+
+Result: `40 passed`. `SkyChartService.render()` now treats
+`UnsupportedSolarSystemBodyError` like invalid or unresolvable target names:
+it renders without a target and adds the stable `target_unresolved` warning.
+The regression uses the real Pluto/Ceres chart target path and an injected
+external resolver that raises if called, so it performs no network resolution.
+
+## Follow-up Commit
+
+Commit message: `fix: contain unsupported chart targets`.
+
+## Concerns
+
+None. The change only extends the existing contained-resolution branch; it
+does not alter supported solar-system bodies, direct coordinates, M42, or
+normal external catalog target resolution.
