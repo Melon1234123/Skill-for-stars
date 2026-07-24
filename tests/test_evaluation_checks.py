@@ -89,7 +89,10 @@ def _numeric_case() -> EvaluationCase:
 
 def test_core_m42_check_passes_with_a_complete_audit_bundle(tmp_path) -> None:
     case = load_case(PROJECT_ROOT / "evaluation/cases/core/core-m42-beijing.json")
-    _write_json(tmp_path / "result.json", {"target": {"canonical_name": "M 42"}})
+    _write_json(
+        tmp_path / "result.json",
+        {"target": {"catalog_target": {"canonical_name": "M 42"}}},
+    )
     _write_text(tmp_path / "report.md", "# Observation Report\n")
     _write_text(tmp_path / "review_checklist.md", "- [ ] Review\n")
     _make_image(tmp_path / "figures/visibility_curve.png", fmt="PNG", size=(640, 480))
@@ -236,7 +239,10 @@ def test_unexpected_exit_code_is_critical(tmp_path) -> None:
 
 def test_json_assertion_mismatch_is_critical(tmp_path) -> None:
     case = load_case(PROJECT_ROOT / "evaluation/cases/core/core-m42-beijing.json")
-    _write_json(tmp_path / "result.json", {"target": {"canonical_name": "M 51"}})
+    _write_json(
+        tmp_path / "result.json",
+        {"target": {"catalog_target": {"canonical_name": "M 51"}}},
+    )
     _write_text(tmp_path / "report.md", "# Observation Report\n")
     _write_text(tmp_path / "review_checklist.md", "- [ ] Review\n")
     _make_image(tmp_path / "figures/visibility_curve.png", fmt="PNG", size=(640, 480))

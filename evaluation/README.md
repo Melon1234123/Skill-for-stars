@@ -5,7 +5,7 @@ This repository ships prompts, manifests, replay tooling, and scoring logic for 
 ## Script-owned Engineering Acceptance
 
 `python scripts/evaluate_starskill.py acceptance` is a separate release gate. It runs the
-three core cases three times each and the six variants once, then records the actual CLI argv,
+three core cases three times each and the ten variants once, then records the actual CLI argv,
 copied inputs, stdout, stderr, exit code, and artifact hashes in `execution.json`. Its output
 declares `mode: script_owned_engineering_acceptance`.
 
@@ -144,7 +144,7 @@ The acceptance line for fixed-case evaluation is:
 - 9 independent core Worker runs total: three runs each for the three fixed core cases.
 - core average base score at least 80/100.
 - per-case population standard deviation at most 5 for each fixed case's three runs.
-- variant hard-gate pass rate at least 90%; with six current variant cases, that means 6/6.
+- variant hard-gate pass rate at least 90%; with ten current variant cases, that means at least 9/10.
 - hard-gate failures cannot be repaired by reviewer generosity or bonus points.
 
 Open-task scores are reported separately and do not decide the fixed-case pass line.

@@ -111,6 +111,8 @@ def build_case_command(
             str(run_dir / "relationship.csv"),
             "--metadata",
             str(run_dir / "relationship.json"),
+            "--cache-dir",
+            str(target_cache_dir),
         ]
     if case.workflow == "fetch-image":
         return [*command, "--output-dir", str(run_dir), "--cache-dir", str(image_cache_dir)]

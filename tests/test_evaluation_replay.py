@@ -1,8 +1,11 @@
 import json
+import sys
 from pathlib import Path
 
 from scripts.evaluate_starskill import main
+from starskill.evaluation.runner import execute_case
 from tests.fixtures.evaluation.replay_fixtures import (
+    read_script_owned_relationship_bundle,
     write_core_m42_bundle,
     write_review_report,
     write_variant_m42_no_window_bundle,
@@ -112,3 +115,55 @@ def test_replay_command_accepts_a_successful_no_window_bundle_with_exit_code_0(
     assert machine_payload["machine_check"]["hard_gate_passed"] is True
     assert machine_payload["machine_check"]["issues"] == []
     assert score_payload["score"]["hard_gate_passed"] is True
+
+
+def test_generic_relationship_case_records_and_replays_v2_artifacts(tmp_path: Path) -> None:
+    case_path = PROJECT_ROOT / "evaluation/cases/generic/generic-mars-m31.json"
+    run_dir = tmp_path / "generic-mars-m31"
+
+    execution = execute_case(
+        case_path,
+        run_dir,
+        python_executable=Path(sys.executable),
+        target_cache_dir=tmp_path / "target-cache",
+        image_cache_dir=tmp_path / "image-cache",
+    )
+    metadata, csv_text = read_script_owned_relationship_bundle(run_dir)
+    csv_header = csv_text.splitlines()[0]
+
+    assert execution.return_code == 0
+    assert execution.command_argv[:4] == [
+        str(Path(sys.executable)),
+        "-m",
+        "starskill",
+        "relationship",
+    ]
+    assert execution.command_argv[-2:] == ["--cache-dir", str((tmp_path / "target-cache").resolve())]
+    assert metadata["settings"]["schema_version"] == "2.0"
+    assert metadata["primary"]["motion"] == "dynamic"
+    assert metadata["secondary"]["motion"] == "fixed_icrs"
+    assert "primary_altitude_deg" in csv_header
+    assert (run_dir / "stdout.txt").is_file()
+    assert (run_dir / "stderr.txt").read_text(encoding="utf-8") == ""
+    assert (run_dir / "exit_code.txt").read_text(encoding="utf-8") == "0\n"
+    assert execution.artifact_sha256["relationship.csv"]
+    assert execution.artifact_sha256["relationship.json"]
+    assert execution.artifact_sha256["stdout.txt"]
+    assert execution.artifact_sha256["stderr.txt"]
+
+    score_dir = tmp_path / "score"
+    replay_exit = main(
+        [
+            "replay",
+            "--case",
+            str(case_path),
+            "--run-dir",
+            str(run_dir),
+            "--output-dir",
+            str(score_dir),
+        ]
+    )
+    score = json.loads((score_dir / "score.json").read_text(encoding="utf-8"))
+
+    assert replay_exit == 0
+    assert score["score"]["hard_gate_passed"] is True

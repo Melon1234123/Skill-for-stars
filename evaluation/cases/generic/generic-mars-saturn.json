@@ -1,0 +1,21 @@
+{
+  "case_id": "generic-mars-saturn",
+  "kind": "variant",
+  "role": "outreach",
+  "task_path": "evaluation/tasks/generic-mars-saturn.json",
+  "workflow": "relationship",
+  "expected_exit_code": 0,
+  "expected_status": "success",
+  "required_files": ["relationship.csv", "relationship.json"],
+  "json_assertions": [
+    {"file": "relationship.json", "pointer": "/settings/schema_version", "equals": "2.0"},
+    {"file": "relationship.json", "pointer": "/primary/motion", "equals": "dynamic"},
+    {"file": "relationship.json", "pointer": "/secondary/motion", "equals": "dynamic"}
+  ],
+  "csv_assertions": [
+    {"file": "relationship.csv", "row": 0, "column": "primary_altitude_deg", "expected": -28.248, "absolute_tolerance": 0.002},
+    {"file": "relationship.csv", "row": 0, "column": "angular_separation_deg", "expected": 20.062, "absolute_tolerance": 0.002}
+  ],
+  "review_focus": ["verify dynamic apparent positions and v2 provenance are preserved"],
+  "prompt_file": "evaluation/prompts/workers/outreach.md"
+}

@@ -467,8 +467,12 @@ def _validate_script_command(
         return
     if case.workflow == "run" and len(command) == 9 and command[5:7] == ["--output-dir", str(run_dir)] and command[7] == "--cache-dir":
         return
-    if case.workflow == "relationship" and command[5:] == [
-        "--output", str(run_dir / "relationship.csv"), "--metadata", str(run_dir / "relationship.json")
+    if case.workflow == "relationship" and len(command) == 11 and command[5:10] == [
+        "--output",
+        str(run_dir / "relationship.csv"),
+        "--metadata",
+        str(run_dir / "relationship.json"),
+        "--cache-dir",
     ]:
         return
     if case.workflow == "fetch-image" and len(command) == 9 and command[5:7] == ["--output-dir", str(run_dir)] and command[7] == "--cache-dir":

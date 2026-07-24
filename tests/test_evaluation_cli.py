@@ -519,11 +519,23 @@ def test_acceptance_repeats_cores_and_runs_each_variant_once(tmp_path, monkeypat
     def fake_execute(case_path, run_dir, **_kwargs):
         case = load_case(case_path)
         executed.append((case.case_id, run_dir))
+        if case.workflow == "fetch-image":
+            cache_dir = _kwargs["image_cache_dir"]
+            cache_files = sorted(path.suffix for path in cache_dir.iterdir())
+            assert cache_files == [".jpg", ".json"]
+        if case.workflow == "run":
+            cache_dir = _kwargs["target_cache_dir"]
+            assert [path.suffix for path in cache_dir.iterdir()] == [".json"]
         run_dir.mkdir(parents=True)
-        return SimpleNamespace(case_id=case.case_id, return_code=case.expected_exit_code, run_dir=str(run_dir))
+        return SimpleNamespace(
+            case_id=case.case_id,
+            return_code=case.expected_exit_code,
+            run_dir=str(run_dir),
+            artifact_sha256={"task.json": "0" * 64},
+        )
 
     summary = EvaluationSummary(
-        total_runs=15,
+        total_runs=19,
         hard_gate_pass_rate=1.0,
         core_hard_gate_pass_rate=1.0,
         variant_hard_gate_pass_rate=1.0,
@@ -571,4 +583,24 @@ def test_acceptance_repeats_cores_and_runs_each_variant_once(tmp_path, monkeypat
     actual_counts = {case_id: sum(case_id == observed for observed, _run_dir in executed) for case_id in expected_counts}
     assert exit_code == 0
     assert actual_counts == expected_counts
-    assert len({run_dir for _case_id, run_dir in executed}) == 15
+    assert len({run_dir for _case_id, run_dir in executed}) == 19
+
+
+def test_acceptance_accepts_output_root_without_explicit_run_or_score_roots(
+    tmp_path, monkeypatch
+) -> None:
+    captured = {}
+
+    def fake_acceptance(args):
+        captured.update(vars(args))
+        return 0
+
+    monkeypatch.setattr(evaluation_cli, "_acceptance", fake_acceptance)
+
+    output_root = tmp_path / "generalized-targets"
+    exit_code = evaluation_cli.main(["acceptance", "--output-dir", str(output_root)])
+
+    assert exit_code == 0
+    assert captured["run_root"] is None
+    assert captured["score_root"] is None
+    assert captured["output_dir"] == output_root

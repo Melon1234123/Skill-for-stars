@@ -2,11 +2,67 @@ import hashlib
 import json
 from io import BytesIO
 from pathlib import Path
+from urllib.parse import urlencode
 
-from PIL import Image
+from PIL import Image, ImageDraw
+
+from starskill.public_data_fetcher import SDSS_ENDPOINT
+from starskill.schemas import SDSSImageRequest, SDSSImageSource
+from starskill.target_resolver import target_cache_path
+from tests.fixtures.m42 import write_m42_target
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
+
+
+def read_script_owned_relationship_bundle(run_dir: Path) -> tuple[dict[str, object], str]:
+    execution = json.loads((run_dir / "execution.json").read_text(encoding="utf-8"))
+    hashes = execution["artifact_sha256"]
+    for relative_path, expected_sha256 in hashes.items():
+        content = (run_dir / relative_path).read_bytes()
+        assert hashlib.sha256(content).hexdigest() == expected_sha256
+    metadata = json.loads((run_dir / "relationship.json").read_text(encoding="utf-8"))
+    csv_text = (run_dir / "relationship.csv").read_text(encoding="utf-8")
+    return metadata, csv_text
+
+
+def write_fixed_sdss_cache(task_path: Path, cache_dir: Path) -> None:
+    request = SDSSImageRequest.model_validate_json(task_path.read_text(encoding="utf-8"))
+    query_parameters = {
+        "ra": request.ra_deg,
+        "dec": request.dec_deg,
+        "scale": request.scale_arcsec_per_pixel,
+        "width": request.width,
+        "height": request.height,
+    }
+    source_url = f"{SDSS_ENDPOINT}?{urlencode(query_parameters)}"
+    cache_key = hashlib.sha256(source_url.encode("utf-8")).hexdigest()
+    content = _fixed_jpeg(request.width, request.height)
+    source = SDSSImageSource(
+        endpoint=SDSS_ENDPOINT,
+        source_url=source_url,
+        accessed_at="2026-07-23T00:00:00+00:00",
+        from_cache=False,
+        query_parameters=query_parameters,
+        content_type="image/jpeg",
+        bytes=len(content),
+        sha256=hashlib.sha256(content).hexdigest(),
+        pixel_scale_arcsec=request.scale_arcsec_per_pixel,
+        wavebands=["SDSS optical color composite"],
+        license_notice=(
+            "Use and acknowledge under the SDSS image-use policy: "
+            "https://www.sdss.org/science/image-gallery/"
+        ),
+    )
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    (cache_dir / f"{cache_key}.jpg").write_bytes(content)
+    (cache_dir / f"{cache_key}.json").write_text(
+        source.model_dump_json(indent=2), encoding="utf-8"
+    )
+
+
+def write_fixed_m42_cache(cache_dir: Path) -> None:
+    write_m42_target(target_cache_path(cache_dir, "M 42"))
 
 
 def write_core_m42_bundle(run_dir: Path) -> None:
@@ -17,7 +73,10 @@ def write_core_m42_bundle(run_dir: Path) -> None:
             {"task_type": "observation_plan", "target": "M42"}, indent=2
         )
         + "\n",
-        "result.json": json.dumps({"target": {"canonical_name": "M 42"}}) + "\n",
+        "result.json": json.dumps(
+            {"target": {"catalog_target": {"canonical_name": "M 42"}}}
+        )
+        + "\n",
         "report.md": "# M42 Observation Plan\n",
         "review_checklist.md": "# Human Review\n",
         "intermediate/target_resolved.json": json.dumps(
@@ -230,3 +289,21 @@ def _write_fixed_png(path: Path) -> None:
     buffer = BytesIO()
     image.save(buffer, format="PNG")
     path.write_bytes(buffer.getvalue())
+
+
+def _fixed_jpeg(width: int, height: int) -> bytes:
+    image = Image.new("RGB", (width, height), "#101820")
+    draw = ImageDraw.Draw(image)
+    margin_x = max(width // 8, 1)
+    margin_y = max(height // 8, 1)
+    draw.ellipse(
+        (margin_x, margin_y, width - margin_x, height - margin_y),
+        fill="#d9e5f2",
+    )
+    draw.ellipse(
+        (width // 3, height // 4, 2 * width // 3, 3 * height // 4),
+        fill="#486581",
+    )
+    output = BytesIO()
+    image.save(output, format="JPEG", quality=90)
+    return output.getvalue()

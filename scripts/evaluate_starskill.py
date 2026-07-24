@@ -8,6 +8,10 @@ import sys
 from collections.abc import Sequence
 from pathlib import Path
 
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
 from pydantic import ValidationError
 
 from starskill.evaluation.cases import CaseManifestError, load_case
@@ -24,6 +28,10 @@ from starskill.evaluation.reporting import (
 )
 from starskill.evaluation.runner import ExecutionError, execute_case
 from starskill.evaluation.scoring import aggregate_scores, score_case
+from tests.fixtures.evaluation.replay_fixtures import (
+    write_fixed_m42_cache,
+    write_fixed_sdss_cache,
+)
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -54,10 +62,10 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     acceptance_parser = commands.add_parser(
         "acceptance",
-        help="execute and replay the 15-run script-owned core and variant matrix",
+        help="execute and replay the 19-run script-owned core and variant matrix",
     )
-    acceptance_parser.add_argument("--run-root", type=Path, required=True)
-    acceptance_parser.add_argument("--score-root", type=Path, required=True)
+    acceptance_parser.add_argument("--run-root", type=Path)
+    acceptance_parser.add_argument("--score-root", type=Path)
     acceptance_parser.add_argument("--output-dir", type=Path, required=True)
     acceptance_parser.add_argument("--python-executable", type=Path, default=Path(sys.executable))
 
@@ -216,10 +224,8 @@ def _execute(args: argparse.Namespace) -> int:
 
 
 def _acceptance(args: argparse.Namespace) -> int:
-    """Run the script-owned 15-run release matrix without Agent claims."""
-    run_root = _prepare_fresh_directory(args.run_root, "run root")
-    score_root = _prepare_fresh_directory(args.score_root, "score root")
-    output_dir = _prepare_fresh_directory(args.output_dir, "aggregate output directory")
+    """Run the script-owned release matrix without Agent claims."""
+    run_root, score_root, output_dir = _prepare_acceptance_directories(args)
     _reject_overlapping_directories(run_root, score_root, output_dir)
     cases_root = Path(__file__).resolve().parents[1] / "evaluation" / "cases"
     case_paths = [
@@ -239,6 +245,10 @@ def _acceptance(args: argparse.Namespace) -> int:
             target_cache_dir, image_cache_dir = _acceptance_cache_dirs(
                 cache_root, case.case_id, run_name
             )
+            if case.workflow == "run":
+                write_fixed_m42_cache(target_cache_dir)
+            if case.workflow == "fetch-image":
+                write_fixed_sdss_cache(Path(case.task_path), image_cache_dir)
             record = execute_case(
                 case_path,
                 run_dir,
@@ -269,29 +279,29 @@ def _acceptance(args: argparse.Namespace) -> int:
                     "replay_exit_code": replay_exit,
                     "run_dir": str(run_dir.resolve()),
                     "score_dir": str(score_dir.resolve()),
+                    "execution_file": str((run_dir / "execution.json").resolve()),
+                    "artifact_sha256": record.artifact_sha256,
                 }
             )
 
     bundles = collect_score_reports(score_root, cases_root=cases_root)
     summary = aggregate_scores([bundle.score for bundle in bundles])
     write_aggregate_reports(summary, bundles, output_dir)
-    print(
-        json.dumps(
-            {
-                "ok": summary.passed,
-                "mode": "script_owned_engineering_acceptance",
-                "total_runs": summary.total_runs,
-                "passed": summary.passed,
-                "run_root": str(run_root),
-                "score_root": str(score_root),
-                "output_dir": str(output_dir),
-                "runs": results,
-            },
-            ensure_ascii=False,
-            indent=2,
-            sort_keys=True,
-        )
+    manifest = {
+        "ok": summary.passed,
+        "mode": "script_owned_engineering_acceptance",
+        "total_runs": summary.total_runs,
+        "passed": summary.passed,
+        "run_root": str(run_root),
+        "score_root": str(score_root),
+        "output_dir": str(output_dir),
+        "runs": results,
+    }
+    (output_dir / "acceptance.json").write_text(
+        json.dumps(manifest, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
     )
+    print(json.dumps(manifest, ensure_ascii=False, indent=2, sort_keys=True))
     return 0 if summary.passed else 1
 
 
@@ -300,6 +310,31 @@ def _acceptance_cache_dirs(cache_root: Path, case_id: str, run_name: str) -> tup
     if case_id == "variant-m51-cache-reuse":
         return target_cache_dir, cache_root / "sdss" / "core-m51-sdss" / "recorded-01"
     return target_cache_dir, cache_root / "sdss" / case_id / run_name
+
+
+def _prepare_acceptance_directories(
+    args: argparse.Namespace,
+) -> tuple[Path, Path, Path]:
+    if (args.run_root is None) != (args.score_root is None):
+        raise ReportError(
+            "invalid_acceptance_layout",
+            "--run-root and --score-root must be provided together",
+        )
+    if args.run_root is not None:
+        return (
+            _prepare_fresh_directory(args.run_root, "run root"),
+            _prepare_fresh_directory(args.score_root, "score root"),
+            _prepare_fresh_directory(args.output_dir, "aggregate output directory"),
+        )
+
+    acceptance_root = _prepare_fresh_directory(args.output_dir, "acceptance output root")
+    run_root = acceptance_root / "runs"
+    score_root = acceptance_root / "scores"
+    aggregate_root = acceptance_root / "reports"
+    run_root.mkdir()
+    score_root.mkdir()
+    aggregate_root.mkdir()
+    return run_root, score_root, aggregate_root
 
 
 def _prepare_fresh_directory(path: Path, label: str) -> Path:

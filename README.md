@@ -28,7 +28,7 @@ StarSkill 是一个可安装、可复现、可审计的天文实训工具包。�
 - `ephemeris`：使用 Astropy 计算目标、太阳和月亮的 AltAz 位置及相关天象信息。
 - `plan`：根据目标高度角、太阳高度角、月亮影响等规则生成候选观测窗口和可视化曲线。
 - `run`：串联输入校验、目标解析、星历计算、观测规划、制图、报告和复核清单，生成完整审计包。
-- `relationship`：计算上海案例中月亮与木星的天空位置关系，避免把视线角距离误解为真实空间距离。
+- `relationship`：Relationship v2 可计算太阳系天体、SIMBAD 名称和直接 ICRS 坐标之间的表观天空位置关系，并兼容原有月亮-木星输入。
 - `fetch-image`：从 SDSS DR18 获取受大小、超时、MIME、JPEG 和尺寸校验约束的 M51 图像，并保留来源和处理元数据。
 - 评测工具：提供 Worker/Reviewer 提示词、案例清单、真实运行证据回放、机器检查和分项评分。
 
@@ -39,6 +39,8 @@ StarSkill 是一个可安装、可复现、可审计的天文实训工具包。�
 | 北京 M42 观测 | `examples/observation_m42_beijing.json` | `run` | `run.json`、`result.json`、星历表、可见性表、曲线、报告、复核清单 |
 | 上海月亮-木星关系 | `examples/moon_jupiter_shanghai.json` | `relationship` | `relationship.csv`、`relationship.json` |
 | M51 公开图像 | `examples/m51_sdss_image.json` | `fetch-image` | `data/m51_sdss.jpg`、`figures/m51_display.png`、`image_metadata.json` |
+
+Relationship v2 将太阳系目标处理为 dynamic apparent positions，每个采样时刻重新计算；SIMBAD 结果和用户直接坐标处理为 fixed ICRS positions。`angular_separation_deg` 只是观测者天球上的表观角距，不是 physical distance。未列入 Astropy 内置星历支持表的太阳系名称会以 `unsupported_solar_system_body` 结构化失败，不会改用 SIMBAD 查询。
 
 ## 安装
 
@@ -138,13 +140,16 @@ python -m starskill plan runs/m42-ephemeris/ephemeris.json \
   --max-sun-altitude-deg -12
 ```
 
-月亮-木星关系：
+通用表观位置关系：
 
 ```bash
-python -m starskill relationship examples/moon_jupiter_shanghai.json \
-  --output runs/moon-jupiter/relationship.csv \
-  --metadata runs/moon-jupiter/relationship.json
+python -m starskill relationship examples/relationships/mars_m31.json \
+  --output runs/mars-m31/relationship.csv \
+  --metadata runs/mars-m31/relationship.json \
+  --cache-dir cache/targets
 ```
+
+`examples/moon_jupiter_shanghai.json` 的 `solar_system_relationship` 输入和 v1 CSV/JSON 字段仍可用。
 
 SDSS M51 图像：
 
@@ -177,7 +182,7 @@ Agent 入口位于 [`skills/run-starskill/SKILL.md`](skills/run-starskill/SKILL.
 - 3 个 core 案例：M42 观测、M51 SDSS 图像、月亮-木星关系；
 - 3 个 Worker 角色：teacher、outreach、research；
 - 每个 core 案例独立运行 3 次，共 9 次 Worker 运行；
-- 6 个 variant 案例检查参数变化、缓存复用和边界条件；
+- 10 个 variant 案例检查参数变化、缓存复用、边界条件和通用目标组合；
 - open task 单独报告，不影响固定任务的通过线。
 
 第一阶段的 Worker 运行彼此独立，避免角色互相掩盖问题；全部 Worker 完成后再进行一轮交叉复核。Reviewer 轮换关系固定为：
@@ -192,7 +197,7 @@ research reviewer -> teacher Worker
 
 - core 平均基础分至少 `80/100`；
 - 每个固定 core 案例的 3 次运行总体标准差不超过 `5`；
-- variant 硬门槛通过率至少 `90%`，当前 6 个 variant 需要全部通过；
+- variant 硬门槛通过率至少 `90%`，当前 10 个 variant 需要至少 9 个通过；
 - 硬门槛失败不能用 Reviewer 宽容或加分抵消；
 - 工程加分最多额外 `10` 分，用于接口标准化、运行加速、可复现重构等真实证据。
 
@@ -202,16 +207,17 @@ research reviewer -> teacher Worker
 
 下面的命令在新目录中真实执行所有固定工作流、保存每个子进程的输入副本、argv、
 stdout、stderr、退出码与 SHA-256，然后回放并聚合结果。它运行 3 个 core 案例各 3
-次以及 6 个 variant 各 1 次，共 15 次：
+次以及 10 个 variant 各 1 次，共 19 次：
 
 ```bash
 .venv/bin/python scripts/evaluate_starskill.py acceptance \
-  --run-root evaluation-runs/script-owned/runs \
-  --score-root evaluation-runs/script-owned/scores \
-  --output-dir evaluation-runs/script-owned/reports
+  --output-dir evaluation-runs/generalized-targets
 ```
 
-成功输出中的 `mode` 为 `script_owned_engineering_acceptance`。该模式是工程运行门禁，
+简化命令会在输出根目录下生成 `runs/`、`scores/` 和 `reports/`，其中
+`reports/acceptance.json` 列出 19 次运行及每个产物的 SHA-256。也可继续显式提供
+`--run-root`、`--score-root` 和 `--output-dir` 以保持旧用法。成功输出中的 `mode`
+为 `script_owned_engineering_acceptance`。该模式是工程运行门禁，
 每份评分包标记为 `evidence_mode: script_owned_engineering`，只计算机器可复算维度，
 不生成或接受 Agent 回复、reviewer 结论或 bonus 证据；正式 Agent 评分仍需按
 [`evaluation/README.md`](evaluation/README.md) 的外部 Worker/Reviewer 流程提供真实证据。

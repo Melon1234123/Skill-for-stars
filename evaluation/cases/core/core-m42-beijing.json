@@ -15,7 +15,7 @@
   ],
   "json_assertions": [
     {"file": "run.json", "pointer": "/status", "equals": "success"},
-    {"file": "result.json", "pointer": "/target/canonical_name", "equals": "M 42"}
+    {"file": "result.json", "pointer": "/target/catalog_target/canonical_name", "equals": "M 42"}
   ],
   "numeric_assertions": [],
   "review_focus": [

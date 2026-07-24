@@ -54,13 +54,17 @@ Expected bundle: `input.json`, `run.json`, `result.json`, `report.md`, `review_c
 
 This command may query SIMBAD unless a validated target cache entry is available.
 
-## Moon-Jupiter Relationship
+## Generalized Relationship
 
 ```text
-.venv/bin/python -m starskill relationship <task.json> --output <relationship.csv> --metadata <relationship.json>
+.venv/bin/python -m starskill relationship <task.json> --output <relationship.csv> --metadata <relationship.json> [--cache-dir <directory>]
 ```
 
-The supported task requires `targets` to be Moon and Jupiter. It uses Astropy's built-in solar-system ephemeris and does not require a live network query.
+Relationship v2 uses `task_type: astronomical_relationship` with `primary` and `secondary` typed target references. Supported kinds are `solar_system` (`body`), `simbad` (`name`), and `coordinates` (`label`, `ra_deg`, `dec_deg`). Solar-system targets are dynamic apparent positions calculated at every sample through Astropy's built-in ephemeris. SIMBAD and direct-coordinate targets are fixed ICRS positions; SIMBAD may query the service unless a validated cache entry exists, while direct coordinates remain offline.
+
+The CSV contains generic primary/secondary AltAz fields, horizon flags, and `angular_separation_deg`; metadata uses `settings.schema_version: "2.0"` and records resolved target motion and provenance. Angular separation is an apparent angle on the observer's sky, not physical distance. Supported built-in bodies are Sun, Moon, Mercury, Venus, Mars, Jupiter, Saturn, Uranus, and Neptune. Any other `solar_system` body exits `2` with structured `error: "unsupported_solar_system_body"`; it never falls back to SIMBAD.
+
+Legacy compatibility is retained: `task_type: solar_system_relationship` still requires `targets: ["moon", "jupiter"]` and writes the existing v1 Moon/Jupiter CSV and JSON fields.
 
 ## SDSS M51 Image
 
@@ -75,7 +79,8 @@ Expected files: `data/m51_sdss.jpg`, `figures/m51_display.png`, and `image_metad
 ```text
 .venv/bin/python -m starskill validate <task.json>
 .venv/bin/python -m starskill resolve <target> [--cache-dir <directory>] [--output <target.json>]
-.venv/bin/python -m starskill ephemeris <task.json> --target-file <target.json> --output <ephemeris.csv> --metadata <ephemeris.json>
+.venv/bin/python -m starskill resolve-target <target-ref.json> [--cache-dir <directory>] [--output <target.json>]
+.venv/bin/python -m starskill ephemeris <task.json> [--target-file <target.json>] [--cache-dir <directory>] --output <ephemeris.csv> --metadata <ephemeris.json>
 .venv/bin/python -m starskill plan <ephemeris.json> --output <visibility.csv> --metadata <result.json> --figure <plot.png> [threshold options]
 ```
 
@@ -129,8 +134,11 @@ The harness does not create child Agents inside this repository and does not cal
 records one real CLI process in `execution.json`. The record contains copied case/task inputs,
 argv, exit code, stdout/stderr paths, and SHA-256 hashes for every captured artifact. Replay
 accepts this evidence without an Agent response only when all record identities, paths, command
-shape, copied inputs, exit code, and hashes validate. `acceptance` repeats every core case three
-times and every variant once; it is an engineering gate, not external Worker or reviewer evidence.
+shape, copied inputs, exit code, and hashes validate. `acceptance --output-dir <new-root>` derives
+`runs`, `scores`, and `reports` below that root and writes `reports/acceptance.json`; the legacy
+explicit `--run-root`, `--score-root`, and `--output-dir` layout remains accepted. Acceptance
+repeats every core case three times and every variant once; the current matrix has 19 runs. It is
+an engineering gate, not external Worker or reviewer evidence.
 Its score bundles use `evidence_mode: script_owned_engineering` and include only machine-check
 dimensions. Reviewer, escalation, and bonus evidence are invalid for this mode.
 

@@ -2,7 +2,7 @@ import json
 from pathlib import Path
 
 import pytest
-from pydantic import ValidationError
+from pydantic import TypeAdapter, ValidationError
 
 from scripts.evaluate_starskill import _validate_replay_identity
 from starskill.evaluation.cases import CaseManifestError, load_case, load_cases
@@ -15,7 +15,12 @@ from starskill.evaluation.reporting import (
     _validate_review,
 )
 from starskill.evaluation.models import EvaluationCase, MachineCheckReport, ReviewReport
-from starskill.schemas import ObservationTask, SDSSImageRequest, SolarSystemRelationshipTask
+from starskill.schemas import (
+    AstronomicalRelationshipTask,
+    ObservationTask,
+    SDSSImageRequest,
+    SolarSystemRelationshipTask,
+)
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -47,8 +52,8 @@ def test_core_m42_case_has_workflow_and_audit_contract() -> None:
 def test_all_case_kinds_have_unique_ids_and_review_focus() -> None:
     cases = load_cases(PROJECT_ROOT / "evaluation/cases")
 
-    assert len(cases) == 18
-    assert len({case.case_id for case in cases}) == 18
+    assert len(cases) == 22
+    assert len({case.case_id for case in cases}) == 22
     assert {case.kind for case in cases} == {"core", "variant", "failure", "open"}
     assert all(case.review_focus for case in cases)
 
@@ -66,6 +71,10 @@ def test_load_cases_resolves_existing_task_and_prompt_paths_in_sorted_order() ->
         "failure-sdss-invalid-response",
         "failure-sdss-service",
         "failure-target-service",
+        "generic-coordinate-coordinate",
+        "generic-m31-coordinate",
+        "generic-mars-m31",
+        "generic-mars-saturn",
         "open-outreach-boundary",
         "open-research-boundary",
         "open-teacher-boundary",
@@ -91,6 +100,10 @@ def test_load_cases_resolves_existing_task_and_prompt_paths_in_sorted_order() ->
         "failure-sdss-invalid-response": "workers/research.md",
         "failure-sdss-service": "workers/research.md",
         "failure-target-service": "workers/teacher.md",
+        "generic-coordinate-coordinate": "workers/outreach.md",
+        "generic-m31-coordinate": "workers/outreach.md",
+        "generic-mars-m31": "workers/outreach.md",
+        "generic-mars-saturn": "workers/outreach.md",
         "open-outreach-boundary": "workers/outreach.md",
         "open-research-boundary": "workers/research.md",
         "open-teacher-boundary": "workers/teacher.md",
@@ -129,6 +142,10 @@ def test_load_cases_has_exact_workflow_and_exit_mapping() -> None:
         "failure-sdss-invalid-response": ("fetch-image", 9),
         "failure-sdss-service": ("fetch-image", 7),
         "failure-target-service": ("run", 4),
+        "generic-coordinate-coordinate": ("relationship", 0),
+        "generic-m31-coordinate": ("relationship", 0),
+        "generic-mars-m31": ("relationship", 0),
+        "generic-mars-saturn": ("relationship", 0),
         "open-outreach-boundary": ("relationship", 2),
         "open-research-boundary": ("fetch-image", 2),
         "open-teacher-boundary": ("run", 0),
@@ -160,8 +177,13 @@ def test_case_task_payloads_match_declared_workflows() -> None:
             task = ObservationTask.model_validate(payload)
             assert task.task_type == "observation_plan"
         elif case.workflow == "relationship":
-            task = SolarSystemRelationshipTask.model_validate(payload)
-            assert task.task_type == "solar_system_relationship"
+            task = TypeAdapter(
+                AstronomicalRelationshipTask | SolarSystemRelationshipTask
+            ).validate_python(payload)
+            assert task.task_type in {
+                "astronomical_relationship",
+                "solar_system_relationship",
+            }
         elif case.workflow == "fetch-image":
             request = SDSSImageRequest.model_validate(payload)
             assert request.target_name == "M51"
@@ -236,6 +258,23 @@ def test_evaluation_readme_documents_external_orchestration() -> None:
     assert "不创建 Agent" in text
     assert "evaluate_starskill.py replay" in text
     assert "live smoke" in text.lower()
+
+
+def test_public_contracts_document_generalized_relationship_semantics() -> None:
+    paths = [
+        PROJECT_ROOT / "README.md",
+        PROJECT_ROOT / "skills/run-starskill/SKILL.md",
+        PROJECT_ROOT / "skills/run-starskill/references/cli-contract.md",
+        PROJECT_ROOT / "docs/starskill-evaluation/acceptance-2026-07-23.md",
+    ]
+
+    for path in paths:
+        text = path.read_text(encoding="utf-8").lower()
+        assert "relationship v2" in text
+        assert "dynamic apparent positions" in text
+        assert "fixed icrs positions" in text
+        assert "physical distance" in text
+        assert "unsupported_solar_system_body" in text
 
 
 def test_reviewer_rotation_mapping_is_exact_in_readme_and_prompts() -> None:
