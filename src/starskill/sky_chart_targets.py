@@ -29,7 +29,19 @@ _BUILTIN_COORDINATES = MappingProxyType(
 
 # Names accepted as solar-system inputs by the chart boundary. The core resolver
 # remains the authority for whether an ephemeris is actually supported.
-_KNOWN_SOLAR_SYSTEM_BODY_NAMES = frozenset((*SUPPORTED_SOLAR_SYSTEM_BODIES, "pluto"))
+_KNOWN_SOLAR_SYSTEM_BODY_NAMES = frozenset(
+    (
+        *SUPPORTED_SOLAR_SYSTEM_BODIES,
+        "pluto",
+        "ceres",
+        "haumea",
+        "makemake",
+        "eris",
+        "pallas",
+        "juno",
+        "vesta",
+    )
+)
 
 
 @dataclass(frozen=True)

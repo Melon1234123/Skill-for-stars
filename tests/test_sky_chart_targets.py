@@ -81,14 +81,17 @@ def test_solar_system_name_is_resolved_without_network() -> None:
     assert called == []
 
 
-def test_pluto_name_raises_explicit_unsupported_error_without_external_resolution() -> None:
+@pytest.mark.parametrize("body", ["Pluto", "Ceres"])
+def test_known_unsupported_solar_system_name_raises_explicit_error_without_external_resolution(
+    body: str,
+) -> None:
     def fail_if_called(_name: str) -> ResolvedTarget | None:
-        raise AssertionError("legacy external resolver must not receive Pluto")
+        raise AssertionError("legacy external resolver must not receive solar-system body")
 
     resolver = SkyChartTargetResolver(external_resolver=fail_if_called)
 
     with pytest.raises(UnsupportedSolarSystemBodyError) as exc_info:
-        resolver.resolve(SkyChartTarget(mode="name", name="Pluto"))
+        resolver.resolve(SkyChartTarget(mode="name", name=body))
 
     assert exc_info.value.code == "unsupported_solar_system_body"
 
