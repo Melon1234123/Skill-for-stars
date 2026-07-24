@@ -299,6 +299,21 @@ class ResolvedAstronomicalTarget(InputModel):
     source: AstronomicalTargetSource
     catalog_target: ResolvedTarget | None = None
 
+    @model_validator(mode="after")
+    def motion_must_match_kind_and_coordinates(self) -> "ResolvedAstronomicalTarget":
+        if self.kind == "solar_system":
+            if self.motion != "dynamic":
+                raise ValueError("solar_system targets must use dynamic motion")
+            if self.ra_deg is not None or self.dec_deg is not None:
+                raise ValueError("dynamic solar_system targets must not have fixed ICRS coordinates")
+            return self
+
+        if self.motion != "fixed_icrs":
+            raise ValueError(f"{self.kind} targets must use fixed_icrs motion")
+        if self.ra_deg is None or self.dec_deg is None:
+            raise ValueError(f"fixed_icrs {self.kind} targets require ra_deg and dec_deg")
+        return self
+
 
 class AstronomicalRelationshipSettings(InputModel):
     schema_version: Literal["2.0"] = "2.0"
