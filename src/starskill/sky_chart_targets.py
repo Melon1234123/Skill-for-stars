@@ -27,6 +27,10 @@ _BUILTIN_COORDINATES = MappingProxyType(
     }
 )
 
+# Names accepted as solar-system inputs by the chart boundary. The core resolver
+# remains the authority for whether an ephemeris is actually supported.
+_KNOWN_SOLAR_SYSTEM_BODY_NAMES = frozenset((*SUPPORTED_SOLAR_SYSTEM_BODIES, "pluto"))
+
 
 @dataclass(frozen=True)
 class ResolvedSkyTarget:
@@ -74,7 +78,7 @@ class SkyChartTargetResolver:
         if builtin := _BUILTIN_COORDINATES.get(key):
             label, ra_deg, dec_deg = builtin
             return ResolvedSkyTarget(label, ra_deg, dec_deg, None, "bundled")
-        if key in SUPPORTED_SOLAR_SYSTEM_BODIES:
+        if key in _KNOWN_SOLAR_SYSTEM_BODY_NAMES:
             resolved = self._target_ref_resolver(
                 SolarSystemTargetRef(kind="solar_system", body=key)
             )

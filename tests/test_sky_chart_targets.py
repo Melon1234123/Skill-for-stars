@@ -10,6 +10,7 @@ from starskill.schemas import (
     TargetSource,
 )
 from starskill.sky_chart_targets import SkyChartTargetResolver
+from starskill.target_references import UnsupportedSolarSystemBodyError
 from starskill.target_resolver import TargetNotFoundError, TargetServiceError
 
 
@@ -78,6 +79,18 @@ def test_solar_system_name_is_resolved_without_network() -> None:
     assert result.solar_system_body == "jupiter"
     assert result.source == "solar_system"
     assert called == []
+
+
+def test_pluto_name_raises_explicit_unsupported_error_without_external_resolution() -> None:
+    def fail_if_called(_name: str) -> ResolvedTarget | None:
+        raise AssertionError("legacy external resolver must not receive Pluto")
+
+    resolver = SkyChartTargetResolver(external_resolver=fail_if_called)
+
+    with pytest.raises(UnsupportedSolarSystemBodyError) as exc_info:
+        resolver.resolve(SkyChartTarget(mode="name", name="Pluto"))
+
+    assert exc_info.value.code == "unsupported_solar_system_body"
 
 
 def test_external_resolver_receives_only_validated_stripped_text() -> None:
