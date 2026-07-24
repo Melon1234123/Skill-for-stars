@@ -8,6 +8,7 @@ from starskill.evaluation.checks import check_run
 from starskill.evaluation.models import ReviewReport
 from starskill.evaluation.reporting import (
     ReportError,
+    ScoreBundle,
     collect_score_reports,
     write_aggregate_reports,
     write_case_reports,
@@ -217,10 +218,42 @@ def test_collect_and_write_aggregate_reports_requires_complete_valid_scores(tmp_
 
     assert [bundle.run_id for bundle in bundles] == ["run-a", "run-b"]
     assert summary_payload["total_runs"] == 2
-    assert "case_id" in markdown
-    assert "run_id" in markdown
     assert "core-m42" in markdown
-    assert "run-a" in markdown
+    assert "## Critical failure evidence\n\n- None" in markdown
+    assert "| case_id | run_id | case_kind | hard_gate | base | bonus | total |" not in markdown
+
+
+def test_aggregate_summary_lists_only_failed_runs_in_critical_failure_table(tmp_path) -> None:
+    run_dir = tmp_path / "run-a"
+    payload = _score_payload(
+        run_dir=run_dir,
+        machine_checks_path=run_dir / "machine_checks.json",
+        summary_path=run_dir / "summary.md",
+    )
+    score = payload["score"]
+    assert isinstance(score, dict)
+    score.update(
+        {
+            "hard_gate_passed": False,
+            "base_score": 0,
+            "total_score": 0,
+            "dimensions": {
+                "closed_loop": 0,
+                "scientific_correctness": 0,
+                "reproducibility": 0,
+                "error_and_safety": 0,
+                "role_usability": 0,
+            },
+        }
+    )
+    bundle = ScoreBundle.model_validate(payload)
+    summary = aggregate_scores([bundle.score])
+
+    write_aggregate_reports(summary, [bundle], tmp_path / "aggregate")
+
+    markdown = (tmp_path / "aggregate" / "summary.md").read_text(encoding="utf-8")
+    assert "| case_id | run_id | case_kind | hard_gate | base | bonus | total |" in markdown
+    assert "| core-m42 | run-a | core | False | 0.0 | 0.0 | 0.0 |" in markdown
 
 
 def test_collect_score_reports_allows_reused_run_id_in_distinct_run_directories(tmp_path) -> None:

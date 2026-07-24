@@ -968,6 +968,7 @@ def _render_aggregate_summary(summary: EvaluationSummary, bundles: list[ScoreBun
     case_counts: dict[str, int] = {}
     for bundle in bundles:
         case_counts[bundle.case_id] = case_counts.get(bundle.case_id, 0) + 1
+    failed_bundles = [bundle for bundle in bundles if not bundle.score.hard_gate_passed]
     lines = [
         "# Evaluation Aggregate Summary",
         "",
@@ -1006,19 +1007,27 @@ def _render_aggregate_summary(summary: EvaluationSummary, bundles: list[ScoreBun
         "",
         *[f"- {name}: `{value}`" for name, value in sorted(summary.decisions.items())],
         "",
-        "## Critical failure evidence",
-        "",
-        "| case_id | run_id | case_kind | hard_gate | base | bonus | total |",
-        "| --- | --- | --- | --- | --- | --- | --- |",
     ]
-    for bundle in bundles:
+    if not failed_bundles:
+        lines.extend(["## Critical failure evidence", "", "- None"])
+        return "\n".join(lines) + "\n"
+
+    lines.extend(
+        [
+            "## Critical failure evidence",
+            "",
+            "| case_id | run_id | case_kind | hard_gate | base | bonus | total |",
+            "| --- | --- | --- | --- | --- | --- | --- |",
+        ]
+    )
+    for bundle in failed_bundles:
         lines.append(
             f"| {bundle.score.case_id} | {bundle.run_id} | {bundle.score.case_kind} | "
             f"{bundle.score.hard_gate_passed} | {bundle.score.base_score} | "
             f"{bundle.score.bonus_score} | {bundle.score.total_score} |"
         )
     critical_paths = []
-    for bundle in bundles:
+    for bundle in failed_bundles:
         critical_paths.extend(
             f"- `{bundle.case_id}` / `{bundle.run_id}`: `{issue.evidence_path}`"
             for issue in bundle.score.issues
