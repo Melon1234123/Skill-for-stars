@@ -9,8 +9,12 @@ from collections.abc import Sequence
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
+SOURCE_PATH = PROJECT_ROOT / "src"
+if str(SOURCE_PATH) in sys.path:
+    sys.path.remove(str(SOURCE_PATH))
+sys.path.insert(0, str(SOURCE_PATH))
 if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
+    sys.path.insert(1, str(PROJECT_ROOT))
 
 from pydantic import ValidationError
 
@@ -206,6 +210,7 @@ def _execute(args: argparse.Namespace) -> int:
         python_executable=args.python_executable,
         target_cache_dir=args.target_cache_dir,
         image_cache_dir=args.image_cache_dir,
+        source_path=SOURCE_PATH,
     )
     print(
         json.dumps(
@@ -258,6 +263,7 @@ def _acceptance(args: argparse.Namespace) -> int:
                 python_executable=args.python_executable,
                 target_cache_dir=target_cache_dir,
                 image_cache_dir=image_cache_dir,
+                source_path=SOURCE_PATH,
             )
             replay_exit = _replay(
                 argparse.Namespace(

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import shutil
 import subprocess
 from datetime import datetime, timezone
@@ -24,6 +25,7 @@ def execute_case(
     python_executable: Path,
     target_cache_dir: Path,
     image_cache_dir: Path,
+    source_path: Path | None = None,
 ) -> ExecutionRecord:
     """Run one case in a new directory and write script-owned evidence."""
     source_case_path = case_path.resolve()
@@ -37,6 +39,16 @@ def execute_case(
     shutil.copyfile(case.task_path, captured_task_path)
 
     project_root = _project_root_from_case_path(source_case_path)
+    source_path = (source_path or project_root / "src").resolve()
+    if not source_path.is_dir():
+        raise ExecutionError(f"source path must be an existing directory: {source_path}")
+    environment = os.environ.copy()
+    inherited_pythonpath = environment.get("PYTHONPATH")
+    environment["PYTHONPATH"] = (
+        str(source_path)
+        if not inherited_pythonpath
+        else os.pathsep.join((str(source_path), inherited_pythonpath))
+    )
     command_argv = build_case_command(
         case,
         task_path=captured_task_path,
@@ -52,6 +64,7 @@ def execute_case(
         text=True,
         capture_output=True,
         check=False,
+        env=environment,
     )
     completed_at = _utc_now()
 
@@ -72,6 +85,8 @@ def execute_case(
         task_path=str(captured_task_path),
         run_dir=str(run_dir),
         working_directory=str(project_root),
+        source_path=str(source_path),
+        environment={"PYTHONPATH": environment["PYTHONPATH"]},
         command_argv=command_argv,
         return_code=completed.returncode,
         started_at=started_at,

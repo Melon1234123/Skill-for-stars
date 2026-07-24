@@ -88,6 +88,8 @@ class ExecutionRecord(EvaluationModel):
     task_path: str = Field(min_length=1)
     run_dir: str = Field(min_length=1)
     working_directory: str = Field(min_length=1)
+    source_path: str = Field(min_length=1)
+    environment: dict[str, str]
     command_argv: list[str] = Field(min_length=5)
     return_code: int
     started_at: str = Field(min_length=1)

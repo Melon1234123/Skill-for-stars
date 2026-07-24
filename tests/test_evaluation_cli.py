@@ -1,4 +1,5 @@
 import json
+import os
 from contextlib import redirect_stderr, redirect_stdout
 from io import StringIO
 from pathlib import Path
@@ -629,7 +630,9 @@ def test_acceptance_accepts_output_root_without_explicit_run_or_score_roots(
         "__file__",
         str(fixture_root / "scripts" / "evaluate_starskill.py"),
     )
-    monkeypatch.setenv("PYTHONPATH", str(PROJECT_ROOT / "src"))
+    inherited_pythonpath = str(tmp_path / "inherited-pythonpath")
+    monkeypatch.setenv("PYTHONPATH", inherited_pythonpath)
+    monkeypatch.setenv("STARSKILL_TEST_SECRET", "must-not-be-recorded")
 
     output_root = tmp_path / "generalized-targets"
     exit_code = evaluation_cli.main(["acceptance", "--output-dir", str(output_root)])
@@ -648,6 +651,13 @@ def test_acceptance_accepts_output_root_without_explicit_run_or_score_roots(
     assert execution["recorder"] == "starskill.evaluation.runner"
     assert execution["return_code"] == 0
     assert execution["command_argv"][1:4] == ["-m", "starskill", "relationship"]
+    assert execution["source_path"] == str((PROJECT_ROOT / "src").resolve())
+    assert execution["environment"] == {
+        "PYTHONPATH": os.pathsep.join(
+            [str((PROJECT_ROOT / "src").resolve()), inherited_pythonpath]
+        )
+    }
+    assert "STARSKILL_TEST_SECRET" not in execution["environment"]
     assert execution["artifact_sha256"]["relationship.csv"]
     assert execution["artifact_sha256"]["relationship.json"]
     assert (run_dir / "stdout.txt").is_file()

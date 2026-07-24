@@ -6,7 +6,7 @@ The 2026-07-23 script-owned baseline passed all three core cases and six origina
 
 ## Generalized Contract
 
-Relationship v2 adds four deterministic, offline variants: `generic-mars-saturn`, `generic-mars-m31`, `generic-m31-coordinate`, and `generic-coordinate-coordinate`. Their timestamps carry explicit UTC offsets, and the M31 acceptance inputs use direct coordinates so the recorded gate does not depend on live SIMBAD availability.
+Relationship v2 adds four deterministic, offline variants: `generic-mars-saturn`, `generic-mars-m31`, `generic-m31-coordinate`, and `generic-coordinate-coordinate`. Their timestamps carry explicit UTC offsets, and typed SIMBAD M31 is resolved from a deterministic cache so the recorded gate does not depend on live SIMBAD availability.
 
 Solar-system targets are dynamic apparent positions evaluated at every timestamp. SIMBAD and direct-coordinate targets are fixed ICRS positions. `angular_separation_deg` is an apparent sky angle, not physical distance. An unsupported solar-system name produces the structured `unsupported_solar_system_body` error and is not retried through SIMBAD. The legacy Moon-Jupiter task and v1 artifacts remain part of the matrix.
 

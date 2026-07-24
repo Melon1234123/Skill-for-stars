@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import hashlib
 import math
+import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
@@ -425,6 +426,10 @@ def _validate_script_execution_record(
             or Path(record.working_directory).resolve() != expected_working_directory
         ):
             raise ValueError("execution.json identity does not match the declared case")
+        if set(record.environment) != {"PYTHONPATH"} or record.environment[
+            "PYTHONPATH"
+        ].split(os.pathsep, maxsplit=1)[0] != record.source_path:
+            raise ValueError("execution.json source environment is invalid")
         captured_case = _load_json_object(expected_case, "case.json")
         if any(
             captured_case.get(field) != getattr(case, field)

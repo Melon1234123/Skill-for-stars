@@ -41,13 +41,34 @@ class FailingSimbadBackend:
 
 class TableSimbadClient:
     def __init__(self) -> None:
-        self.field_requests: list[tuple[str, ...]] = []
+        self.events: list[tuple[str, object]] = []
+        self._timeout: int | None = None
+        self._row_limit: int | None = None
+
+    @property
+    def timeout(self) -> int | None:
+        return self._timeout
+
+    @timeout.setter
+    def timeout(self, value: int) -> None:
+        self._timeout = value
+        self.events.append(("timeout", value))
+
+    @property
+    def ROW_LIMIT(self) -> int | None:
+        return self._row_limit
+
+    @ROW_LIMIT.setter
+    def ROW_LIMIT(self, value: int) -> None:
+        self._row_limit = value
+        self.events.append(("row_limit", value))
 
     def add_votable_fields(self, *fields: str) -> None:
-        self.field_requests.append(fields)
+        self.events.append(("fields", fields))
         self.fields = fields
 
     def query_object(self, query_name: str) -> Table:
+        self.events.append(("query", query_name))
         return Table(
             rows=[
                 (
@@ -71,13 +92,20 @@ def test_simbad_backend_configures_votable_fields_once_before_first_query() -> N
     client = TableSimbadClient()
     backend = resolver.SimbadBackend(client=client)
 
+    assert client.events == []
     assert not hasattr(client, "fields")
 
     backend.query_object("M 42")
     backend.query_object("M 42")
 
     assert client.fields == ("otype", "ids")
-    assert client.field_requests == [("otype", "ids")]
+    assert client.events == [
+        ("timeout", 30),
+        ("row_limit", 1),
+        ("fields", ("otype", "ids")),
+        ("query", "M 42"),
+        ("query", "M 42"),
+    ]
 
 
 def test_resolved_target_preserves_coordinates_and_provenance() -> None:

@@ -339,6 +339,10 @@ def test_public_contracts_document_generalized_relationship_semantics() -> None:
         assert "physical distance" in text
         assert "unsupported_solar_system_body" in text
 
+    acceptance_text = paths[-1].read_text(encoding="utf-8")
+    assert "typed SIMBAD M31 is resolved from a deterministic cache" in acceptance_text
+    assert "M31 acceptance inputs use direct coordinates" not in acceptance_text
+
 
 def test_reviewer_rotation_mapping_is_exact_in_readme_and_prompts() -> None:
     readme = (PROJECT_ROOT / "evaluation/README.md").read_text(encoding="utf-8")

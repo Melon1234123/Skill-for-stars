@@ -15,6 +15,7 @@ import starskill.cli as cli
 import starskill.target_resolver as target_resolver
 from starskill.cli import main
 from starskill.sky_chart_catalog import CatalogDownloadError
+from tests.fixtures.evaluation.replay_fixtures import write_fixed_m31_cache
 from tests.fixtures.m42 import write_m42_ephemeris, write_m42_target
 
 
@@ -544,6 +545,84 @@ def test_typed_simbad_invalid_name_returns_structured_error(
         "message": "target name contains unsafe characters",
     }
     assert client.capability_requests == []
+
+
+@pytest.mark.parametrize(
+    ("command", "payload", "output_arguments"),
+    [
+        ("resolve-target", {"kind": "simbad", "name": "M31"}, []),
+        (
+            "ephemeris",
+            {
+                **coordinate_observation_task(),
+                "target": {"kind": "simbad", "name": "M31"},
+            },
+            ["--output", "ephemeris.csv", "--metadata", "ephemeris.json"],
+        ),
+        (
+            "relationship",
+            {
+                **coordinate_relationship_task(),
+                "primary": {"kind": "simbad", "name": "M31"},
+            },
+            ["--output", "relationship.csv", "--metadata", "relationship.json"],
+        ),
+    ],
+)
+def test_cached_typed_simbad_commands_never_touch_client_capabilities_or_query(
+    tmp_path: Path,
+    capsys,
+    monkeypatch: pytest.MonkeyPatch,
+    command: str,
+    payload: dict[str, object],
+    output_arguments: list[str],
+) -> None:
+    class OfflineTrackingSimbadClient:
+        def __init__(self) -> None:
+            self.events: list[tuple[str, object]] = []
+
+        @property
+        def timeout(self) -> int | None:
+            return None
+
+        @timeout.setter
+        def timeout(self, value: int) -> None:
+            self.events.append(("timeout", value))
+
+        @property
+        def ROW_LIMIT(self) -> int | None:
+            return None
+
+        @ROW_LIMIT.setter
+        def ROW_LIMIT(self, value: int) -> None:
+            self.events.append(("row_limit", value))
+
+        def add_votable_fields(self, *fields: str) -> None:
+            self.events.append(("fields", fields))
+
+        def query_object(self, query_name: str) -> None:
+            self.events.append(("query", query_name))
+            pytest.fail("a valid deterministic cache hit must remain offline")
+
+    client = OfflineTrackingSimbadClient()
+    monkeypatch.setattr(target_resolver, "Simbad", lambda: client)
+    cache_dir = tmp_path / "target-cache"
+    write_fixed_m31_cache(cache_dir)
+    input_path = write_json(tmp_path / f"{command}.json", payload)
+    argv = [command, str(input_path)]
+    for argument in output_arguments:
+        argv.append(
+            str(tmp_path / argument)
+            if argument.endswith(".json") or argument.endswith(".csv")
+            else argument
+        )
+    argv.extend(["--cache-dir", str(cache_dir)])
+
+    exit_code = main(argv)
+    captured = capsys.readouterr()
+
+    assert exit_code == 0, captured.err
+    assert client.events == []
 
 
 def test_module_help_lists_plan_command() -> None:
