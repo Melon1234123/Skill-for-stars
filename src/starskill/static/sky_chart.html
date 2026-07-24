@@ -387,7 +387,16 @@
           <h2 class="section-label" id="observer-label">Observer / 观测地</h2>
           <div class="field-grid">
             <div>
-              <label for="location-name">地点名称</label>
+              <label for="site-preset">常用观测地</label>
+              <select id="site-preset">
+                <option value="beijing" selected>北京</option>
+                <option value="shanghai">上海</option>
+                <option value="guangzhou">广州</option>
+                <option value="manual">手动设置</option>
+              </select>
+            </div>
+            <div>
+              <label for="location-name">观测点备注</label>
               <input id="location-name" type="text" value="北京" maxlength="80" required>
             </div>
             <div class="field-grid coordinates">
@@ -488,6 +497,10 @@
       const serverTimestamp = "__DEFAULT_TIMESTAMP_LOCAL__";
       const form = document.getElementById("sky-chart-form");
       const timestampInput = document.getElementById("timestamp-local");
+      const sitePreset = document.getElementById("site-preset");
+      const locationNameInput = document.getElementById("location-name");
+      const longitudeInput = document.getElementById("longitude");
+      const latitudeInput = document.getElementById("latitude");
       const timezoneInput = document.getElementById("timezone");
       const slider = document.getElementById("time-slider");
       const offsetOutput = document.getElementById("time-offset");
@@ -503,6 +516,27 @@
       let baseTimestamp = Date.parse(serverTimestamp);
       let debounceTimer = null;
       let activeRequest = null;
+
+      const OBSERVING_SITE_PRESETS = Object.freeze({
+        beijing: Object.freeze({
+          locationName: "北京",
+          longitude: "116.4074",
+          latitude: "39.9042",
+          timezone: "Asia/Shanghai"
+        }),
+        shanghai: Object.freeze({
+          locationName: "上海",
+          longitude: "121.4737",
+          latitude: "31.2304",
+          timezone: "Asia/Shanghai"
+        }),
+        guangzhou: Object.freeze({
+          locationName: "广州",
+          longitude: "113.2644",
+          latitude: "23.1291",
+          timezone: "Asia/Shanghai"
+        })
+      });
 
       timestampInput.value = serverTimestamp.slice(0, 16);
 
@@ -570,6 +604,22 @@
         targetDec.required = coordinates;
       }
 
+      function applySitePreset(key) {
+        const preset = OBSERVING_SITE_PRESETS[key];
+        if (!preset) {
+          return;
+        }
+        locationNameInput.value = preset.locationName;
+        longitudeInput.value = preset.longitude;
+        latitudeInput.value = preset.latitude;
+        timezoneInput.value = preset.timezone;
+        resetTimeWindow();
+      }
+
+      function markManualSite() {
+        sitePreset.value = "manual";
+      }
+
       function buildPayload() {
         const mode = currentTargetMode();
         const target = mode === "name"
@@ -577,9 +627,9 @@
           : {mode: "coordinates", ra_deg: Number(targetRa.value), dec_deg: Number(targetDec.value)};
         return {
           observer: {
-            location_name: document.getElementById("location-name").value,
-            longitude: Number(document.getElementById("longitude").value),
-            latitude: Number(document.getElementById("latitude").value),
+            location_name: locationNameInput.value,
+            longitude: Number(longitudeInput.value),
+            latitude: Number(latitudeInput.value),
             timezone: timezoneInput.value
           },
           timestamp_local: offsetIso(timestampInput.value, timezoneInput.value),
@@ -660,6 +710,14 @@
 
       timestampInput.addEventListener("change", resetTimeWindow);
       timezoneInput.addEventListener("change", resetTimeWindow);
+      sitePreset.addEventListener("change", () => {
+        if (sitePreset.value !== "manual") {
+          applySitePreset(sitePreset.value);
+        }
+      });
+      [locationNameInput, longitudeInput, latitudeInput, timezoneInput].forEach((input) => {
+        input.addEventListener("input", markManualSite);
+      });
       form.elements["target-mode"].forEach((input) => input.addEventListener("change", setTargetMode));
       slider.addEventListener("input", () => {
         const minutes = Number(slider.value);

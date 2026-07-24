@@ -155,6 +155,26 @@ def test_page_contains_complete_controls_and_bounded_browser_lifecycle(
     assert "innerHTML" not in page
 
 
+def test_page_declares_local_observing_site_presets(
+    tmp_path: Path, rendered_chart: RenderedSkyChart
+) -> None:
+    page = make_client(tmp_path, rendered_chart).get("/").text
+
+    for token in (
+        'id="site-preset"',
+        'value="beijing"',
+        'value="shanghai"',
+        'value="guangzhou"',
+        'value="manual"',
+        "OBSERVING_SITE_PRESETS",
+        "applySitePreset",
+        "markManualSite",
+        "sitePreset.addEventListener",
+        "locationNameInput, longitudeInput, latitudeInput, timezoneInput",
+    ):
+        assert token in page
+
+
 def test_docs_openapi_and_cors_are_disabled(
     tmp_path: Path, rendered_chart: RenderedSkyChart
 ) -> None:
