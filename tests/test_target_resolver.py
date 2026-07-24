@@ -63,6 +63,17 @@ class EmptyTableSimbadClient(TableSimbadClient):
         return Table(names=("main_id", "ra", "dec", "otype", "ids"))
 
 
+def test_simbad_backend_configures_votable_fields_only_before_query() -> None:
+    client = TableSimbadClient()
+    backend = resolver.SimbadBackend(client=client)
+
+    assert not hasattr(client, "fields")
+
+    backend.query_object("M 42")
+
+    assert client.fields == ("otype", "ids")
+
+
 def test_resolved_target_preserves_coordinates_and_provenance() -> None:
     assert hasattr(schemas, "ResolvedTarget"), "ResolvedTarget schema is missing"
 

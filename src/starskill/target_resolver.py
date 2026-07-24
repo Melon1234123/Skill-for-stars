@@ -51,9 +51,9 @@ class SimbadBackend:
         self.timeout_seconds = timeout_seconds
         self.client.timeout = timeout_seconds
         self.client.ROW_LIMIT = 1
-        self.client.add_votable_fields("otype", "ids")
 
     def query_object(self, query_name: str) -> Mapping[str, Any] | None:
+        self.client.add_votable_fields("otype", "ids")
         table = self.client.query_object(query_name)
         if table is None or len(table) == 0:
             return None

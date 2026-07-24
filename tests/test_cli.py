@@ -12,6 +12,7 @@ from PIL import Image, ImageDraw
 from pydantic import ValidationError
 
 import starskill.cli as cli
+import starskill.target_resolver as target_resolver
 from starskill.cli import main
 from starskill.sky_chart_catalog import CatalogDownloadError
 from tests.fixtures.m42 import write_m42_ephemeris, write_m42_target
@@ -510,10 +511,20 @@ def test_resolve_target_and_ephemeris_accept_typed_references(
 def test_typed_simbad_invalid_name_returns_structured_error(
     tmp_path: Path,
     capsys,
+    monkeypatch: pytest.MonkeyPatch,
     command: str,
     payload: dict[str, object],
     argv_suffix: list[str],
 ) -> None:
+    class CapabilityTrackingSimbadClient:
+        def __init__(self) -> None:
+            self.capability_requests: list[tuple[str, ...]] = []
+
+        def add_votable_fields(self, *fields: str) -> None:
+            self.capability_requests.append(fields)
+
+    client = CapabilityTrackingSimbadClient()
+    monkeypatch.setattr(target_resolver, "Simbad", lambda: client)
     input_path = write_json(tmp_path / "invalid-simbad.json", payload)
     argv = [command, str(input_path)]
     for argument in argv_suffix:
@@ -532,6 +543,7 @@ def test_typed_simbad_invalid_name_returns_structured_error(
         "error": "invalid_target_name",
         "message": "target name contains unsafe characters",
     }
+    assert client.capability_requests == []
 
 
 def test_module_help_lists_plan_command() -> None:
