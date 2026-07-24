@@ -526,6 +526,9 @@ def test_acceptance_repeats_cores_and_runs_each_variant_once(tmp_path, monkeypat
         if case.workflow == "run":
             cache_dir = _kwargs["target_cache_dir"]
             assert [path.suffix for path in cache_dir.iterdir()] == [".json"]
+        if case.case_id in {"generic-mars-m31", "generic-m31-coordinate"}:
+            cache_dir = _kwargs["target_cache_dir"]
+            assert [path.suffix for path in cache_dir.iterdir()] == [".json"]
         run_dir.mkdir(parents=True)
         return SimpleNamespace(
             case_id=case.case_id,
@@ -589,18 +592,59 @@ def test_acceptance_repeats_cores_and_runs_each_variant_once(tmp_path, monkeypat
 def test_acceptance_accepts_output_root_without_explicit_run_or_score_roots(
     tmp_path, monkeypatch
 ) -> None:
-    captured = {}
+    executed_run_dirs: list[Path] = []
+    replayed_score_dirs: list[Path] = []
 
-    def fake_acceptance(args):
-        captured.update(vars(args))
+    def fake_execute(case_path, run_dir, **_kwargs):
+        case = load_case(case_path)
+        run_dir.mkdir(parents=True)
+        executed_run_dirs.append(run_dir.resolve())
+        return SimpleNamespace(
+            case_id=case.case_id,
+            return_code=case.expected_exit_code,
+            run_dir=str(run_dir.resolve()),
+            artifact_sha256={"task.json": "0" * 64},
+        )
+
+    def fake_replay(args):
+        args.output_dir.mkdir(parents=True)
+        replayed_score_dirs.append(args.output_dir.resolve())
         return 0
 
-    monkeypatch.setattr(evaluation_cli, "_acceptance", fake_acceptance)
+    summary = EvaluationSummary(
+        total_runs=19,
+        hard_gate_pass_rate=1.0,
+        core_hard_gate_pass_rate=1.0,
+        variant_hard_gate_pass_rate=1.0,
+        average_base_score=89.0,
+        core_average_base_score=89.0,
+        per_case_standard_deviation={},
+        open_task_scores={},
+        critical_failures=0,
+        passed=True,
+        thresholds={},
+        decisions={},
+        reports=[],
+    )
+    monkeypatch.setattr(evaluation_cli, "execute_case", fake_execute)
+    monkeypatch.setattr(evaluation_cli, "_replay", fake_replay)
+    monkeypatch.setattr(evaluation_cli, "collect_score_reports", lambda *_args, **_kwargs: [])
+    monkeypatch.setattr(evaluation_cli, "aggregate_scores", lambda _bundles: summary)
+    monkeypatch.setattr(
+        evaluation_cli,
+        "write_aggregate_reports",
+        lambda _summary, _bundles, output_dir: (output_dir / "summary.json").write_text("{}"),
+    )
 
     output_root = tmp_path / "generalized-targets"
     exit_code = evaluation_cli.main(["acceptance", "--output-dir", str(output_root)])
 
     assert exit_code == 0
-    assert captured["run_root"] is None
-    assert captured["score_root"] is None
-    assert captured["output_dir"] == output_root
+    assert (output_root / "runs").is_dir()
+    assert (output_root / "scores").is_dir()
+    assert (output_root / "reports" / "summary.json").is_file()
+    assert (output_root / "reports" / "acceptance.json").is_file()
+    assert len(executed_run_dirs) == 19
+    assert len(replayed_score_dirs) == 19
+    assert all(path.is_relative_to((output_root / "runs").resolve()) for path in executed_run_dirs)
+    assert all(path.is_relative_to((output_root / "scores").resolve()) for path in replayed_score_dirs)

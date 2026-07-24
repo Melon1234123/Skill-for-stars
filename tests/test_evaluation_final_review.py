@@ -152,7 +152,7 @@ def test_replay_rejects_json_shaped_fake_worker_evidence(tmp_path: Path) -> None
 
 def test_real_shaped_m51_project_relative_metadata_paths_replay_as_run_relative(tmp_path: Path) -> None:
     run_dir = tmp_path / "m51"
-    _write_m51_bundle(run_dir, from_cache=False, legacy_paths=True)
+    _write_m51_bundle(run_dir, from_cache=True, legacy_paths=True)
     case = load_case(PROJECT_ROOT / "evaluation/cases/core/core-m51-sdss.json")
 
     report = check_run(case, run_dir, 0, '{"downloaded": true}', "")

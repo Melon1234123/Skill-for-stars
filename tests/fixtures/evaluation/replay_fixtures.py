@@ -7,7 +7,7 @@ from urllib.parse import urlencode
 from PIL import Image, ImageDraw
 
 from starskill.public_data_fetcher import SDSS_ENDPOINT
-from starskill.schemas import SDSSImageRequest, SDSSImageSource
+from starskill.schemas import ResolvedTarget, SDSSImageRequest, SDSSImageSource
 from starskill.target_resolver import target_cache_path
 from tests.fixtures.m42 import write_m42_target
 
@@ -63,6 +63,30 @@ def write_fixed_sdss_cache(task_path: Path, cache_dir: Path) -> None:
 
 def write_fixed_m42_cache(cache_dir: Path) -> None:
     write_m42_target(target_cache_path(cache_dir, "M 42"))
+
+
+def write_fixed_m31_cache(cache_dir: Path) -> None:
+    target = ResolvedTarget.model_validate(
+        {
+            "input_name": "M31",
+            "query_name": "M 31",
+            "canonical_name": "M 31",
+            "ra_deg": 10.684708,
+            "dec_deg": 41.26875,
+            "object_type": "Galaxy",
+            "aliases": ["M 31", "NGC 224", "Andromeda Galaxy"],
+            "coordinate_frame": "ICRS",
+            "source": {
+                "database": "SIMBAD",
+                "service_url": "https://simbad.cds.unistra.fr/simbad/sim-tap/sync",
+                "accessed_at": "2026-07-23T00:00:00+00:00",
+                "from_cache": False,
+            },
+        }
+    )
+    cache_path = target_cache_path(cache_dir, target.query_name)
+    cache_path.parent.mkdir(parents=True, exist_ok=True)
+    cache_path.write_text(target.model_dump_json(indent=2), encoding="utf-8")
 
 
 def write_core_m42_bundle(run_dir: Path) -> None:

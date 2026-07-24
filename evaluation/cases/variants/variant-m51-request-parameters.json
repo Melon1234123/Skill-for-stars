@@ -13,7 +13,8 @@
     {"path": "figures/m51_display.png", "kind": "image"}
   ],
   "json_assertions": [
-    {"file": "image_metadata.json", "pointer": "/source/database", "equals": "SDSS SkyServer"}
+    {"file": "image_metadata.json", "pointer": "/source/database", "equals": "SDSS SkyServer"},
+    {"file": "image_metadata.json", "pointer": "/source/from_cache", "equals": true}
   ],
   "numeric_assertions": [
     {"file": "image_metadata.json", "pointer": "/request/scale_arcsec_per_pixel", "expected": 0.5, "absolute_tolerance": 0.0001},

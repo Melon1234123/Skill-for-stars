@@ -11,7 +11,9 @@
     {"file": "relationship.json", "pointer": "/settings/schema_version", "equals": "2.0"},
     {"file": "relationship.json", "pointer": "/primary/motion", "equals": "dynamic"},
     {"file": "relationship.json", "pointer": "/secondary/motion", "equals": "fixed_icrs"},
-    {"file": "relationship.json", "pointer": "/secondary/source/provider", "equals": "user_coordinates"}
+    {"file": "relationship.json", "pointer": "/secondary/source/provider", "equals": "simbad_cache"},
+    {"file": "relationship.json", "pointer": "/secondary/source/from_cache", "equals": true},
+    {"file": "relationship.json", "pointer": "/secondary/catalog_target/source/from_cache", "equals": true}
   ],
   "csv_assertions": [
     {"file": "relationship.csv", "row": 0, "column": "primary_altitude_deg", "expected": -28.248, "absolute_tolerance": 0.002},

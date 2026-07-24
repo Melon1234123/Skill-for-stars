@@ -2,6 +2,8 @@ import json
 import sys
 from pathlib import Path
 
+import pytest
+
 from scripts.evaluate_starskill import main
 from starskill.evaluation.runner import execute_case
 from tests.fixtures.evaluation.replay_fixtures import (
@@ -10,6 +12,7 @@ from tests.fixtures.evaluation.replay_fixtures import (
     write_review_report,
     write_variant_m42_no_window_bundle,
 )
+from tests.fixtures.evaluation import replay_fixtures
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -117,15 +120,26 @@ def test_replay_command_accepts_a_successful_no_window_bundle_with_exit_code_0(
     assert score_payload["score"]["hard_gate_passed"] is True
 
 
-def test_generic_relationship_case_records_and_replays_v2_artifacts(tmp_path: Path) -> None:
-    case_path = PROJECT_ROOT / "evaluation/cases/generic/generic-mars-m31.json"
-    run_dir = tmp_path / "generic-mars-m31"
+@pytest.mark.parametrize(
+    ("case_id", "m31_slot"),
+    [
+        ("generic-mars-m31", "secondary"),
+        ("generic-m31-coordinate", "primary"),
+    ],
+)
+def test_generic_relationship_case_records_and_replays_v2_artifacts(
+    tmp_path: Path, case_id: str, m31_slot: str
+) -> None:
+    case_path = PROJECT_ROOT / f"evaluation/cases/generic/{case_id}.json"
+    run_dir = tmp_path / case_id
+    target_cache_dir = tmp_path / "target-cache"
+    replay_fixtures.write_fixed_m31_cache(target_cache_dir)
 
     execution = execute_case(
         case_path,
         run_dir,
         python_executable=Path(sys.executable),
-        target_cache_dir=tmp_path / "target-cache",
+        target_cache_dir=target_cache_dir,
         image_cache_dir=tmp_path / "image-cache",
     )
     metadata, csv_text = read_script_owned_relationship_bundle(run_dir)
@@ -138,10 +152,13 @@ def test_generic_relationship_case_records_and_replays_v2_artifacts(tmp_path: Pa
         "starskill",
         "relationship",
     ]
-    assert execution.command_argv[-2:] == ["--cache-dir", str((tmp_path / "target-cache").resolve())]
+    assert execution.command_argv[-2:] == ["--cache-dir", str(target_cache_dir.resolve())]
     assert metadata["settings"]["schema_version"] == "2.0"
-    assert metadata["primary"]["motion"] == "dynamic"
-    assert metadata["secondary"]["motion"] == "fixed_icrs"
+    assert metadata[m31_slot]["kind"] == "simbad"
+    assert metadata[m31_slot]["motion"] == "fixed_icrs"
+    assert metadata[m31_slot]["source"]["provider"] == "simbad_cache"
+    assert metadata[m31_slot]["source"]["from_cache"] is True
+    assert metadata[m31_slot]["catalog_target"]["source"]["from_cache"] is True
     assert "primary_altitude_deg" in csv_header
     assert (run_dir / "stdout.txt").is_file()
     assert (run_dir / "stderr.txt").read_text(encoding="utf-8") == ""

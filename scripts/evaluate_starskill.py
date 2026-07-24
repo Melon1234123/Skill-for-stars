@@ -29,6 +29,7 @@ from starskill.evaluation.reporting import (
 from starskill.evaluation.runner import ExecutionError, execute_case
 from starskill.evaluation.scoring import aggregate_scores, score_case
 from tests.fixtures.evaluation.replay_fixtures import (
+    write_fixed_m31_cache,
     write_fixed_m42_cache,
     write_fixed_sdss_cache,
 )
@@ -247,6 +248,8 @@ def _acceptance(args: argparse.Namespace) -> int:
             )
             if case.workflow == "run":
                 write_fixed_m42_cache(target_cache_dir)
+            if case.case_id in {"generic-mars-m31", "generic-m31-coordinate"}:
+                write_fixed_m31_cache(target_cache_dir)
             if case.workflow == "fetch-image":
                 write_fixed_sdss_cache(Path(case.task_path), image_cache_dir)
             record = execute_case(

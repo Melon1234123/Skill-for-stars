@@ -18,9 +18,12 @@ from starskill.evaluation.models import EvaluationCase, MachineCheckReport, Revi
 from starskill.schemas import (
     AstronomicalRelationshipTask,
     ObservationTask,
+    ResolvedTarget,
     SDSSImageRequest,
     SolarSystemRelationshipTask,
 )
+from starskill.target_resolver import resolve_target, target_cache_path
+from tests.fixtures.evaluation import replay_fixtures
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -189,6 +192,66 @@ def test_case_task_payloads_match_declared_workflows() -> None:
             assert request.target_name == "M51"
         else:
             pytest.fail(f"unexpected workflow in test coverage: {case.workflow}")
+
+
+def test_generic_m31_cases_use_simbad_cache_contracts() -> None:
+    expected_target_slots = {
+        "generic-mars-m31": "secondary",
+        "generic-m31-coordinate": "primary",
+    }
+
+    for case_id, target_slot in expected_target_slots.items():
+        case = load_case(PROJECT_ROOT / f"evaluation/cases/generic/{case_id}.json")
+        task = json.loads(Path(case.task_path).read_text(encoding="utf-8"))
+        assertions = {item.pointer: item.equals for item in case.json_assertions}
+
+        assert task[target_slot] == {"kind": "simbad", "name": "M31"}
+        assert assertions[f"/{target_slot}/source/provider"] == "simbad_cache"
+        assert assertions[f"/{target_slot}/source/from_cache"] is True
+        assert assertions[f"/{target_slot}/catalog_target/source/from_cache"] is True
+
+
+def test_fixed_m31_cache_writer_publishes_a_valid_resolved_target(tmp_path: Path) -> None:
+    cache_dir = tmp_path / "targets"
+
+    replay_fixtures.write_fixed_m31_cache(cache_dir)
+
+    cache_path = target_cache_path(cache_dir, "M 31")
+    target = ResolvedTarget.model_validate_json(cache_path.read_text(encoding="utf-8"))
+
+    class NoLiveQueryBackend:
+        service_url = "https://example.invalid/simbad"
+
+        def query_object(self, _query_name: str):
+            pytest.fail("validated M31 cache must avoid a live SIMBAD query")
+
+    cached_target = resolve_target(
+        "M31", backend=NoLiveQueryBackend(), cache_dir=cache_dir
+    )
+
+    assert target.query_name == "M 31"
+    assert target.canonical_name == "M 31"
+    assert target.ra_deg == pytest.approx(10.684708)
+    assert target.dec_deg == pytest.approx(41.26875)
+    assert target.source.database == "SIMBAD"
+    assert cached_target.source.from_cache is True
+
+
+def test_acceptance_m51_cases_hard_assert_seeded_cache_use() -> None:
+    cases = [
+        case
+        for case in load_cases(PROJECT_ROOT / "evaluation/cases")
+        if case.kind in {"core", "variant"} and case.workflow == "fetch-image"
+    ]
+
+    assert {case.case_id for case in cases} == {
+        "core-m51-sdss",
+        "variant-m51-cache-reuse",
+        "variant-m51-request-parameters",
+    }
+    for case in cases:
+        assertions = {item.pointer: item.equals for item in case.json_assertions}
+        assert assertions["/source/from_cache"] is True
 
 
 def test_load_case_rejects_array_wildcard_json_pointer(tmp_path: Path) -> None:

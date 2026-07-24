@@ -1,10 +1,8 @@
 {
   "task_type": "astronomical_relationship",
   "primary": {
-    "kind": "coordinates",
-    "label": "M31 fixed ICRS",
-    "ra_deg": 10.684708,
-    "dec_deg": 41.26875
+    "kind": "simbad",
+    "name": "M31"
   },
   "secondary": {
     "kind": "coordinates",
