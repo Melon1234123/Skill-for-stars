@@ -743,6 +743,54 @@ def test_run_web_server_hard_binds_loopback_and_opens_after_health(
     assert observed["browser_url"] == "http://127.0.0.1:8123/"
 
 
+def test_browser_open_success_is_announced_after_health(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    announced = Event()
+    events: list[str] = []
+
+    class HealthyServer:
+        started = False
+
+        def __init__(self, config: object) -> None:
+            self.config = config
+
+        def run(self) -> None:
+            events.append("server-running")
+            self.started = True
+            assert announced.wait(timeout=1)
+
+    def health_get(_url: str) -> int:
+        events.append("health-ok")
+        return 200
+
+    def browser_open(url: str) -> bool:
+        events.append(f"browser-opened:{url}")
+        return True
+
+    def record_print(value: str) -> None:
+        events.append(f"printed:{value}")
+        announced.set()
+
+    monkeypatch.setattr(web_api_module.uvicorn, "Server", HealthyServer)
+    monkeypatch.setattr("builtins.print", record_print)
+
+    web_api_module.run_web_server(
+        8123,
+        True,
+        web_app_factory=lambda: object(),
+        health_get=health_get,
+        browser_open=browser_open,
+    )
+
+    assert events == [
+        "server-running",
+        "health-ok",
+        "browser-opened:http://127.0.0.1:8123/",
+        "printed:本地星图已在默认浏览器打开：http://127.0.0.1:8123/",
+    ]
+
+
 def test_bind_failure_propagates_without_opening_browser(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

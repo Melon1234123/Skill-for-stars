@@ -443,7 +443,9 @@ def run_web_server(
                         opened = browser_open(base_url)
                     except Exception:
                         opened = False
-                if not opened:
+                if opened:
+                    print(f"本地星图已在默认浏览器打开：{base_url}")
+                else:
                     print(base_url)
                 return
             stop_helper.wait(0.1)
