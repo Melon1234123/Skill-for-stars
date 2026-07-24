@@ -244,7 +244,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     run_parser.add_argument("--max-sun-altitude-deg", type=float, default=-12.0)
 
     relationship_parser = commands.add_parser(
-        "relationship", help="calculate the Moon-Jupiter sky relationship"
+        "relationship",
+        help="calculate an apparent astronomical target relationship",
+        description="Calculate an apparent astronomical target relationship.",
     )
     relationship_parser.add_argument("input_path", type=Path)
     relationship_parser.add_argument("--output", type=Path, required=True)
@@ -357,7 +359,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 backend=SimbadBackend() if reference.kind == "simbad" else None,
                 cache_dir=args.cache_dir,
             )
-        except TargetResolutionError as exc:
+        except (InvalidTargetNameError, TargetResolutionError) as exc:
             print_resolution_error(exc)
             return resolution_error_exit_code(exc)
         if args.output:
@@ -433,7 +435,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                     ),
                     cache_dir=args.cache_dir,
                 )
-            except TargetResolutionError as exc:
+            except (InvalidTargetNameError, TargetResolutionError) as exc:
                 print_resolution_error(exc)
                 return resolution_error_exit_code(exc)
             write_astronomical_relationship_csv(result, args.output)
@@ -510,7 +512,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 2
     if args.command == "validate":
         discriminator = payload.get("task_type", "observation_plan")
-        task_model = TARGET_BEARING_TASK_MODELS.get(discriminator)
+        task_model = (
+            TARGET_BEARING_TASK_MODELS.get(discriminator)
+            if isinstance(discriminator, str)
+            else None
+        )
         if task_model is None:
             try:
                 TARGET_BEARING_TASK_ADAPTER.validate_python(payload)
@@ -559,7 +565,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                     ),
                     cache_dir=args.cache_dir,
                 )
-            except TargetResolutionError as exc:
+            except (InvalidTargetNameError, TargetResolutionError) as exc:
                 print_resolution_error(exc)
                 return resolution_error_exit_code(exc)
         result = calculate_ephemeris(task, target)

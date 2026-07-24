@@ -262,6 +262,19 @@ def test_validate_command_returns_structured_validation_errors(
     assert output["details"][0]["location"] == ["observer", "timezone"]
 
 
+def test_validate_command_returns_structured_error_for_unhashable_task_type(
+    tmp_path: Path, capsys
+) -> None:
+    input_path = write_json(tmp_path / "invalid-task-type.json", {"task_type": []})
+
+    exit_code = main(["validate", str(input_path)])
+    output = json.loads(capsys.readouterr().err)
+
+    assert exit_code == 2
+    assert output["valid"] is False
+    assert output["error"] == "validation_error"
+
+
 @pytest.mark.parametrize(
     "payload",
     [
@@ -468,6 +481,59 @@ def test_resolve_target_and_ephemeris_accept_typed_references(
     assert ephemeris["target"]["source"]["provider"] == "user_coordinates"
 
 
+@pytest.mark.parametrize(
+    ("command", "payload", "argv_suffix"),
+    [
+        (
+            "resolve-target",
+            {"kind": "simbad", "name": "M42; SELECT *"},
+            [],
+        ),
+        (
+            "ephemeris",
+            {
+                **coordinate_observation_task(),
+                "target": {"kind": "simbad", "name": "M42; SELECT *"},
+            },
+            ["--output", "ephemeris.csv", "--metadata", "ephemeris.json"],
+        ),
+        (
+            "relationship",
+            {
+                **coordinate_relationship_task(),
+                "primary": {"kind": "simbad", "name": "M42; SELECT *"},
+            },
+            ["--output", "relationship.csv", "--metadata", "relationship.json"],
+        ),
+    ],
+)
+def test_typed_simbad_invalid_name_returns_structured_error(
+    tmp_path: Path,
+    capsys,
+    command: str,
+    payload: dict[str, object],
+    argv_suffix: list[str],
+) -> None:
+    input_path = write_json(tmp_path / "invalid-simbad.json", payload)
+    argv = [command, str(input_path)]
+    for argument in argv_suffix:
+        argv.append(
+            str(tmp_path / argument)
+            if argument.endswith(".json") or argument.endswith(".csv")
+            else argument
+        )
+
+    exit_code = main(argv)
+    output = json.loads(capsys.readouterr().err)
+
+    assert exit_code == 2
+    assert output == {
+        "resolved": False,
+        "error": "invalid_target_name",
+        "message": "target name contains unsafe characters",
+    }
+
+
 def test_module_help_lists_plan_command() -> None:
     result = subprocess.run(
         [sys.executable, "-m", "starskill", "--help"],
@@ -480,6 +546,14 @@ def test_module_help_lists_plan_command() -> None:
 
     assert result.returncode == 0
     assert "plan" in result.stdout
+
+
+def test_relationship_help_describes_apparent_astronomical_relationship(capsys) -> None:
+    with pytest.raises(SystemExit) as help_exit:
+        main(["relationship", "--help"])
+
+    assert help_exit.value.code == 0
+    assert "apparent astronomical target relationship" in capsys.readouterr().out
 
 
 def test_plan_command_writes_visibility_result_and_figure(tmp_path, capsys) -> None:
