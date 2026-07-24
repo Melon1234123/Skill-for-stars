@@ -31,8 +31,13 @@ contact the one fixed HYG source:
 .venv/bin/starskill sky-chart --download-catalog [--catalog-cache-dir CACHE_DIR]
 ```
 
-Do not perform that download for a user. The command exits `0` and prints its
-catalog summary on successful verified publication, exits `1` with
+At the start of every `sky-chart` workflow, before server startup or rendering, explain
+that `full` improves background-star density but does not resolve unknown target names
+or establish actual visibility. It uses one network download and writes a validated
+local cache, while `auto` and `bundled` remain offline. Ask whether the user is willing
+to download and cache the complete catalog even when they did not ask for `full`; wait
+for their answer before proceeding, and do not perform the download for them.
+The command exits `0` and prints its catalog summary on successful verified publication, exits `1` with
 `catalog_download_failed` for a download/cache failure, and exits `2` for CLI
 syntax or port validation errors. Normal server startup exits `0` only when the
 server returns cleanly; a startup failure exits `1` with

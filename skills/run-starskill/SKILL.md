@@ -42,7 +42,37 @@ Run the selected command and capture its exit code and structured stdout or stde
 
 Do not substitute fabricated coordinates, images, source metadata, or success reports when a service fails. A cache hit is acceptable only when the CLI validates the cached record.
 
-For a local visual chart, run `.venv/bin/starskill sky-chart --open` after prerequisites are installed, or report the manual loopback URL when the user does not want a browser opened. Do not run a full-catalog download on the user's behalf: require the human user to run `.venv/bin/starskill sky-chart --download-catalog` themselves when they want full density. Keep the ordinary chart offline; that explicit download is the only chart operation that accesses the fixed, verified HYG source.
+For a local visual chart, run `.venv/bin/starskill sky-chart --open` after prerequisites are installed, or report the manual loopback URL when the user does not want a browser opened.
+
+## Sky-Chart Catalog Choice
+
+Use `auto` by default. It prefers a verified local full HYG v4.1 cache and otherwise
+uses the packaged bright-star catalog with a degraded status. `bundled` is always
+offline and has a sparser background. `full` increases background-star density but
+does not resolve an unknown target name or establish weather, horizon, or site safety.
+
+On the first response for every `sky-chart` workflow, before starting the server or
+rendering a chart, state these tradeoffs and ask the following question. Do this whether
+or not the user mentioned `full`, requested a dense chart, or reported degradation: a
+full catalog makes one network request to the fixed verified HYG source, writes a
+validated local cache, consumes download time and disk space, and makes later
+full-density renders read locally.
+
+> 是否愿意下载并在本机缓存完整 HYG v4.1 星表？它会增加背景星密度，但不保证目标名称解析或实际可见性。
+
+Wait for an explicit answer before starting the workflow. If the user agrees, do not
+run the download on their behalf: give the human user this command to run from the
+repository root, then have them restart or refresh the chart after it reports success:
+
+```bash
+.venv/bin/starskill sky-chart --download-catalog
+```
+
+If the user declines, continue with `auto` or `bundled` and report the resulting catalog
+mode and any degradation. If they do not answer, pause rather than starting the workflow.
+Do not repeat the question later in the same sky-chart workflow unless the user changes
+their catalog choice. Ordinary chart rendering remains offline; this explicit human-run
+command is the only chart operation that accesses the fixed, verified HYG source.
 
 ## Verify the Result
 

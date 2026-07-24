@@ -43,6 +43,11 @@ def test_readme_documents_python_only_sky_chart() -> None:
     assert 'pip install -e ".[dev]"' not in text
     assert "starskill sky-chart --open" in text
     assert ".venv/bin/starskill sky-chart --open" in document_text["Skill"]
+    assert "完整星表只影响背景星的密度" in text
+    assert "首次进入星图流程都应先说明" in text
+    assert "是否愿意下载并在本机缓存完整 hyg v4.1 星表" in document_text["Skill"]
+    assert "on the first response for every `sky-chart` workflow" in document_text["Skill"]
+    assert "even when they did not ask for `full`" in document_text["CLI reference"]
     assert text.count("```") % 2 == 0
     assert "```text\nverified 100 packaged HYG v4.1 records\n```" in hyg_source
     assert "packaged HYG v4.1 records against /tmp" not in hyg_source
