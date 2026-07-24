@@ -5,6 +5,7 @@ from pydantic import TypeAdapter, ValidationError
 
 from starskill.schemas import (
     AstronomicalRelationshipResult,
+    AstronomicalRelationshipSample,
     AstronomicalRelationshipTask,
     TargetRef,
 )
@@ -139,3 +140,34 @@ def test_general_relationship_result_records_apparent_altaz_provenance(
     assert result.settings.solar_system_ephemeris == "builtin"
     assert result.settings.atmospheric_refraction is False
     assert result.settings.iers_auto_download is False
+
+
+@pytest.mark.parametrize(
+    ("altitude_field", "horizon_field", "altitude_deg", "is_above_horizon"),
+    [
+        ("primary_altitude_deg", "primary_is_above_horizon", 20, False),
+        ("secondary_altitude_deg", "secondary_is_above_horizon", -2, True),
+    ],
+)
+def test_relationship_sample_rejects_contradictory_horizon_state(
+    altitude_field: str,
+    horizon_field: str,
+    altitude_deg: float,
+    is_above_horizon: bool,
+) -> None:
+    sample = {
+        "timestamp_local": "2026-01-10T18:00:00+08:00",
+        "timestamp_utc": "2026-01-10T10:00:00+00:00",
+        "primary_altitude_deg": 20,
+        "primary_azimuth_deg": 100,
+        "primary_is_above_horizon": True,
+        "secondary_altitude_deg": -2,
+        "secondary_azimuth_deg": 270,
+        "secondary_is_above_horizon": False,
+        "angular_separation_deg": 85,
+    }
+    sample[altitude_field] = altitude_deg
+    sample[horizon_field] = is_above_horizon
+
+    with pytest.raises(ValidationError, match=horizon_field):
+        AstronomicalRelationshipSample.model_validate(sample)

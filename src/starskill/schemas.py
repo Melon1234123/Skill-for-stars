@@ -322,6 +322,18 @@ class AstronomicalRelationshipSample(InputModel):
     secondary_is_above_horizon: bool
     angular_separation_deg: float = Field(ge=0, le=180)
 
+    @model_validator(mode="after")
+    def horizon_flags_must_match_altitudes(self) -> "AstronomicalRelationshipSample":
+        if self.primary_is_above_horizon != (self.primary_altitude_deg >= 0):
+            raise ValueError(
+                "primary_is_above_horizon must equal primary_altitude_deg >= 0"
+            )
+        if self.secondary_is_above_horizon != (self.secondary_altitude_deg >= 0):
+            raise ValueError(
+                "secondary_is_above_horizon must equal secondary_altitude_deg >= 0"
+            )
+        return self
+
 
 class AstronomicalRelationshipResult(InputModel):
     task: AstronomicalRelationshipTask
