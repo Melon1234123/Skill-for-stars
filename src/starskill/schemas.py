@@ -2,7 +2,7 @@
 
 from datetime import datetime, timedelta, timezone
 import re
-from typing import Literal
+from typing import Annotated, Literal
 import unicodedata
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -242,6 +242,93 @@ class SolarSystemRelationshipResult(InputModel):
     task: SolarSystemRelationshipTask
     settings: SolarSystemRelationshipSettings
     samples: list[SolarSystemRelationshipSample] = Field(min_length=1)
+
+
+class SolarSystemTargetRef(InputModel):
+    kind: Literal["solar_system"]
+    body: str
+
+    @field_validator("body")
+    @classmethod
+    def normalize_body(cls, value: str) -> str:
+        body = " ".join(value.split()).casefold()
+        if not body or len(body) > 64 or not re.fullmatch(r"[a-z][a-z0-9_ -]*", body):
+            raise ValueError("solar-system body must be a safe non-empty name")
+        return body
+
+
+class SimbadTargetRef(InputModel):
+    kind: Literal["simbad"]
+    name: str
+
+
+class CoordinateTargetRef(InputModel):
+    kind: Literal["coordinates"]
+    label: str = Field(min_length=1, max_length=120)
+    ra_deg: float = Field(ge=0, lt=360, allow_inf_nan=False)
+    dec_deg: float = Field(ge=-90, le=90, allow_inf_nan=False)
+
+
+TargetRef = Annotated[
+    SolarSystemTargetRef | SimbadTargetRef | CoordinateTargetRef,
+    Field(discriminator="kind"),
+]
+
+
+class AstronomicalRelationshipTask(InputModel):
+    task_type: Literal["astronomical_relationship"] = "astronomical_relationship"
+    primary: TargetRef
+    secondary: TargetRef
+    observer: Observer
+    time_range: TimeRange
+    interval_minutes: int = Field(default=20, ge=1, le=120)
+
+
+class AstronomicalTargetSource(InputModel):
+    provider: str
+    from_cache: bool
+    accessed_at: datetime
+
+
+class ResolvedAstronomicalTarget(InputModel):
+    label: str
+    kind: Literal["solar_system", "simbad", "coordinates"]
+    motion: Literal["dynamic", "fixed_icrs"]
+    ra_deg: float | None = Field(default=None, ge=0, lt=360, allow_inf_nan=False)
+    dec_deg: float | None = Field(default=None, ge=-90, le=90, allow_inf_nan=False)
+    source: AstronomicalTargetSource
+    catalog_target: ResolvedTarget | None = None
+
+
+class AstronomicalRelationshipSettings(InputModel):
+    schema_version: Literal["2.0"] = "2.0"
+    calculated_at: datetime
+    astropy_version: str
+    time_scale: Literal["UTC"] = "UTC"
+    horizontal_frame: Literal["AltAz"] = "AltAz"
+    solar_system_ephemeris: Literal["builtin"] = "builtin"
+    atmospheric_refraction: bool = False
+    iers_auto_download: bool = False
+
+
+class AstronomicalRelationshipSample(InputModel):
+    timestamp_local: datetime
+    timestamp_utc: datetime
+    primary_altitude_deg: float = Field(ge=-90, le=90)
+    primary_azimuth_deg: float = Field(ge=0, lt=360)
+    primary_is_above_horizon: bool
+    secondary_altitude_deg: float = Field(ge=-90, le=90)
+    secondary_azimuth_deg: float = Field(ge=0, lt=360)
+    secondary_is_above_horizon: bool
+    angular_separation_deg: float = Field(ge=0, le=180)
+
+
+class AstronomicalRelationshipResult(InputModel):
+    task: AstronomicalRelationshipTask
+    primary: ResolvedAstronomicalTarget
+    secondary: ResolvedAstronomicalTarget
+    settings: AstronomicalRelationshipSettings
+    samples: list[AstronomicalRelationshipSample] = Field(min_length=1)
 
 
 class SDSSImageRequest(InputModel):
