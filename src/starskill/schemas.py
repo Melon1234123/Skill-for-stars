@@ -2,8 +2,9 @@
 
 from datetime import datetime, timedelta, timezone
 import re
-from typing import Annotated, Literal
+from typing import Annotated, Literal, Protocol
 import unicodedata
+from urllib.parse import urlsplit
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import (
@@ -274,6 +275,198 @@ TargetRef = Annotated[
     SolarSystemTargetRef | SimbadTargetRef | CoordinateTargetRef,
     Field(discriminator="kind"),
 ]
+
+
+ImageProviderId = Literal["sdss_dr18", "mast", "esa_sky", "panstarrs"]
+ImageFormat = Literal["jpeg", "png", "fits"]
+ImageProviderMode = Literal[
+    "auto_trusted",
+    "sdss_dr18",
+    "mast",
+    "esa_sky",
+    "panstarrs",
+]
+
+
+class ImageContractModel(InputModel):
+    """Immutable boundary models for generic image discovery and retrieval."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+
+def _require_https_url(value: str) -> str:
+    normalized = value.strip()
+    parsed = urlsplit(normalized)
+    if (
+        parsed.scheme != "https"
+        or not parsed.hostname
+        or parsed.username is not None
+        or parsed.password is not None
+    ):
+        raise ValueError("URL must be an absolute HTTPS URL without credentials")
+    return normalized
+
+
+def _require_hostname(value: str) -> str:
+    normalized = value.strip().casefold()
+    if not re.fullmatch(r"[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?", normalized):
+        raise ValueError("host must be a DNS hostname")
+    return normalized
+
+
+class AstronomyImageSearchRequest(ImageContractModel):
+    target: TargetRef
+    observed_at: datetime | None = None
+    field_of_view_arcmin: float = Field(default=12, gt=0, le=120)
+    bands: list[str] = Field(default_factory=list, max_length=8)
+    max_width: int = Field(default=2048, ge=64, le=4096)
+    max_height: int = Field(default=2048, ge=64, le=4096)
+    allowed_formats: list[ImageFormat] = Field(
+        default_factory=lambda: ["jpeg", "png", "fits"]
+    )
+    timeout_seconds: int = Field(default=30, ge=1, le=120)
+    max_bytes: int = Field(default=20_000_000, ge=1, le=50_000_000)
+    provider_mode: ImageProviderMode = "auto_trusted"
+
+    @model_validator(mode="after")
+    def require_dynamic_target_time(self) -> "AstronomyImageSearchRequest":
+        if isinstance(self.target, SolarSystemTargetRef) and self.observed_at is None:
+            raise ValueError("solar-system image requests require observed_at")
+        if self.observed_at is not None and (
+            self.observed_at.tzinfo is None or self.observed_at.utcoffset() is None
+        ):
+            raise ValueError("observed_at must include a timezone offset")
+        return self
+
+
+class ResolvedImageTarget(ImageContractModel):
+    label: str = Field(min_length=1, max_length=120)
+    ra_deg: float = Field(ge=0, lt=360, allow_inf_nan=False)
+    dec_deg: float = Field(ge=-90, le=90, allow_inf_nan=False)
+    coordinate_frame: Literal["ICRS"] = "ICRS"
+    source: "AstronomicalTargetSource"
+    observed_at: datetime | None = None
+
+    @field_validator("observed_at")
+    @classmethod
+    def observed_at_must_include_timezone(cls, value: datetime | None) -> datetime | None:
+        if value is not None and (value.tzinfo is None or value.utcoffset() is None):
+            raise ValueError("observed_at must include a timezone offset")
+        return value
+
+
+class ImageCandidate(ImageContractModel):
+    candidate_id: str = Field(
+        min_length=1,
+        max_length=128,
+        pattern=r"^[A-Za-z0-9][A-Za-z0-9_.:-]*$",
+    )
+    provider_id: ImageProviderId
+    source_url: str
+    download_url: str
+    band: str | None = Field(default=None, min_length=1, max_length=64)
+    format: ImageFormat
+    width: int | None = Field(default=None, ge=1)
+    height: int | None = Field(default=None, ge=1)
+    query_parameters: dict[str, str | int | float] = Field(default_factory=dict)
+    license_url: str | None = None
+
+    @field_validator("source_url", "download_url")
+    @classmethod
+    def urls_must_be_https(cls, value: str) -> str:
+        return _require_https_url(value)
+
+    @field_validator("license_url")
+    @classmethod
+    def license_url_must_be_https(cls, value: str | None) -> str | None:
+        return _require_https_url(value) if value is not None else None
+
+
+class ImageProviderDescriptor(ImageContractModel):
+    provider_id: ImageProviderId
+    organization: str = Field(min_length=1, max_length=160)
+    allowed_hosts: tuple[str, ...] = Field(min_length=1)
+    allowed_redirect_hosts: tuple[str, ...] = Field(min_length=1)
+    endpoint_roots: tuple[str, ...] = Field(min_length=1)
+    formats: tuple[ImageFormat, ...] = Field(min_length=1)
+    max_bytes: int = Field(ge=1, le=50_000_000)
+    license_url: str
+
+    @field_validator("allowed_hosts", "allowed_redirect_hosts")
+    @classmethod
+    def hosts_must_be_dns_names(cls, value: tuple[str, ...]) -> tuple[str, ...]:
+        return tuple(_require_hostname(host) for host in value)
+
+    @field_validator("endpoint_roots")
+    @classmethod
+    def endpoint_roots_must_be_https(cls, value: tuple[str, ...]) -> tuple[str, ...]:
+        return tuple(_require_https_url(root) for root in value)
+
+    @field_validator("license_url")
+    @classmethod
+    def license_url_must_be_https(cls, value: str) -> str:
+        return _require_https_url(value)
+
+
+class ImageTrustDecision(ImageContractModel):
+    allowed: bool
+    reason_code: str = Field(min_length=1, max_length=96, pattern=r"^[a-z0-9_]+$")
+
+
+class ImageRank(ImageContractModel):
+    candidate_id: str = Field(
+        min_length=1,
+        max_length=128,
+        pattern=r"^[A-Za-z0-9][A-Za-z0-9_.:-]*$",
+    )
+    confidence: float = Field(ge=0, le=1, allow_inf_nan=False)
+    relevance: float = Field(ge=0, le=1, allow_inf_nan=False)
+    reason: str = Field(min_length=1, max_length=500)
+
+    @classmethod
+    def zero(cls, candidate_id: str) -> "ImageRank":
+        return cls(
+            candidate_id=candidate_id,
+            confidence=0.0,
+            relevance=0.0,
+            reason="no_model_rank",
+        )
+
+
+class ModelRanker(Protocol):
+    def rank(
+        self,
+        request: AstronomyImageSearchRequest,
+        candidates: list[ImageCandidate],
+    ) -> list[ImageRank]: ...
+
+
+class ImageSearchResult(ImageContractModel):
+    request: AstronomyImageSearchRequest
+    target: ResolvedImageTarget
+    candidates: list[ImageCandidate] = Field(default_factory=list)
+    ranks: list[ImageRank] = Field(default_factory=list)
+    decisions: dict[str, ImageTrustDecision] = Field(default_factory=dict)
+    selected_candidate: ImageCandidate | None = None
+
+    @model_validator(mode="after")
+    def ranks_must_cover_each_candidate_once(self) -> "ImageSearchResult":
+        candidate_ids = [candidate.candidate_id for candidate in self.candidates]
+        if len(candidate_ids) != len(set(candidate_ids)):
+            raise ValueError("candidate IDs must be unique")
+
+        rank_ids = [rank.candidate_id for rank in self.ranks]
+        if len(rank_ids) != len(set(rank_ids)):
+            raise ValueError("model ranks must contain one unique rank per candidate")
+        if self.ranks and set(rank_ids) != set(candidate_ids):
+            raise ValueError("model ranks must contain one rank for every input candidate")
+
+        if (
+            self.selected_candidate is not None
+            and self.selected_candidate.candidate_id not in candidate_ids
+        ):
+            raise ValueError("selected candidate must come from discovered candidates")
+        return self
 
 
 class AstronomicalRelationshipTask(InputModel):

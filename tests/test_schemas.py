@@ -5,6 +5,7 @@ import pytest
 from pydantic import ValidationError
 
 from starskill.schemas import (
+    AstronomyImageSearchRequest,
     ObservingConditionsRequest,
     ObservationTask,
     SimbadTargetRef,
@@ -126,5 +127,66 @@ def test_conditions_request_rejects_an_empty_time_range(valid_payload: dict) -> 
                     "start": "2026-01-10T20:00:00+08:00",
                     "end": "2026-01-10T20:00:00+08:00",
                 },
+            }
+        )
+
+
+def test_generic_image_request_accepts_target_and_registered_provider() -> None:
+    request = AstronomyImageSearchRequest.model_validate(
+        {
+            "target": {
+                "kind": "coordinates",
+                "label": "M31",
+                "ra_deg": 10.684708,
+                "dec_deg": 41.26875,
+            },
+            "field_of_view_arcmin": 12,
+            "bands": ["g", "r", "i"],
+            "provider_mode": "panstarrs",
+        }
+    )
+
+    assert request.allowed_formats == ["jpeg", "png", "fits"]
+
+
+@pytest.mark.parametrize(
+    "observed_at",
+    [None, "2026-01-10T10:00:00"],
+)
+def test_solar_system_image_request_requires_offset_aware_observed_at(
+    observed_at: str | None,
+) -> None:
+    with pytest.raises(ValidationError, match="observed_at"):
+        AstronomyImageSearchRequest.model_validate(
+            {
+                "target": {"kind": "solar_system", "body": "mars"},
+                "observed_at": observed_at,
+            }
+        )
+
+
+def test_solar_system_image_request_accepts_offset_aware_observed_at() -> None:
+    request = AstronomyImageSearchRequest.model_validate(
+        {
+            "target": {"kind": "solar_system", "body": "mars"},
+            "observed_at": "2026-01-10T10:00:00+08:00",
+        }
+    )
+
+    assert request.observed_at is not None
+    assert request.observed_at.utcoffset() is not None
+
+
+def test_generic_image_request_rejects_unregistered_provider() -> None:
+    with pytest.raises(ValidationError, match="provider_mode"):
+        AstronomyImageSearchRequest.model_validate(
+            {
+                "target": {
+                    "kind": "coordinates",
+                    "label": "M31",
+                    "ra_deg": 10.684708,
+                    "dec_deg": 41.26875,
+                },
+                "provider_mode": "arbitrary_archive",
             }
         )
