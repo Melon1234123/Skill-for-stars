@@ -3,6 +3,8 @@ import os
 import sys
 from pathlib import Path
 
+import pytest
+
 from scripts.evaluate_starskill import main
 from starskill.evaluation.runner import execute_case
 
@@ -130,6 +132,49 @@ def test_replay_rejects_synchronized_foreign_source_path_and_pythonpath(tmp_path
         (str(foreign_source), "/safe/inherited/path")
     )
     execution_path.write_text(json.dumps(execution), encoding="utf-8")
+
+    exit_code = main(
+        [
+            "replay",
+            "--case",
+            str(case_path),
+            "--run-dir",
+            str(run_dir),
+            "--output-dir",
+            str(tmp_path / "score"),
+        ]
+    )
+
+    assert exit_code == 1
+
+
+@pytest.mark.parametrize(
+    ("source_path", "pythonpath_source"),
+    [
+        (".", str(PROJECT_ROOT / "src")),
+        (str(PROJECT_ROOT / "src"), "."),
+        (".", "."),
+    ],
+    ids=["relative-source-path", "relative-pythonpath", "both-relative"],
+)
+def test_replay_rejects_relative_v2_source_provenance_from_a_different_cwd(
+    tmp_path: Path, monkeypatch, source_path: str, pythonpath_source: str
+) -> None:
+    case_path = PROJECT_ROOT / "evaluation/cases/failures/failure-invalid-timezone.json"
+    run_dir = tmp_path / "invalid-timezone"
+    execute_case(
+        case_path,
+        run_dir,
+        python_executable=Path(sys.executable),
+        target_cache_dir=tmp_path / "target-cache",
+        image_cache_dir=tmp_path / "image-cache",
+    )
+    execution_path = run_dir / "execution.json"
+    execution = json.loads(execution_path.read_text(encoding="utf-8"))
+    execution["source_path"] = source_path
+    execution["environment"]["PYTHONPATH"] = pythonpath_source
+    execution_path.write_text(json.dumps(execution), encoding="utf-8")
+    monkeypatch.chdir(PROJECT_ROOT / "src")
 
     exit_code = main(
         [

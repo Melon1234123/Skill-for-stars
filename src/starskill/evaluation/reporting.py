@@ -440,10 +440,14 @@ def _validate_script_execution_record(
             pythonpath_source = record.environment.get("PYTHONPATH", "").split(
                 os.pathsep, maxsplit=1
             )[0]
+            recorded_source_path = Path(record.source_path)
+            recorded_pythonpath_source = Path(pythonpath_source)
             if (
                 set(record.environment) != {"PYTHONPATH"}
-                or Path(record.source_path).resolve() != _TRUSTED_SOURCE_PATH
-                or Path(pythonpath_source).resolve() != _TRUSTED_SOURCE_PATH
+                or not recorded_source_path.is_absolute()
+                or not recorded_pythonpath_source.is_absolute()
+                or recorded_source_path.resolve() != _TRUSTED_SOURCE_PATH
+                or recorded_pythonpath_source.resolve() != _TRUSTED_SOURCE_PATH
             ):
                 raise ValueError("execution.json source environment is invalid")
         captured_case = _load_json_object(expected_case, "case.json")
