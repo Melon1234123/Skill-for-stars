@@ -43,6 +43,7 @@ def test_readme_documents_python_only_sky_chart() -> None:
     assert 'pip install -e ".[dev]"' not in text
     assert "starskill sky-chart --open" in text
     assert ".venv/bin/starskill sky-chart --open" in document_text["Skill"]
+    assert "本地星图已在默认浏览器打开" in document_text["Skill"]
     assert "完整星表只影响背景星的密度" in text
     assert "首次进入星图流程都应先说明" in text
     assert "是否愿意下载并在本机缓存完整 hyg v4.1 星表" in document_text["Skill"]

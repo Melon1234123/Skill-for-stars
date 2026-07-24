@@ -42,7 +42,7 @@ Run the selected command and capture its exit code and structured stdout or stde
 
 Do not substitute fabricated coordinates, images, source metadata, or success reports when a service fails. A cache hit is acceptable only when the CLI validates the cached record.
 
-For a local visual chart, run `.venv/bin/starskill sky-chart --open` after prerequisites are installed, or report the manual loopback URL when the user does not want a browser opened.
+For a local visual chart, run `.venv/bin/starskill sky-chart --open` after prerequisites are installed. When its health-confirmed stdout reports `本地星图已在默认浏览器打开：<URL>`, reply with that same confirmation. If it only reports a loopback URL, say that the local server is ready and give the URL; do not claim that a browser opened. When the user does not want a browser opened, report the manual loopback URL.
 
 ## Sky-Chart Catalog Choice
 
@@ -73,6 +73,26 @@ mode and any degradation. If they do not answer, pause rather than starting the 
 Do not repeat the question later in the same sky-chart workflow unless the user changes
 their catalog choice. Ordinary chart rendering remains offline; this explicit human-run
 command is the only chart operation that accesses the fixed, verified HYG source.
+
+## Optional NASA APOD Prompt
+
+At the end of every Skill response, add a short user-visible NASA APOD status
+prompt, even when the requested workflow did not use NASA data:
+
+- When APOD was not requested, say that it is optional and direct the user to
+  the README's `可选的 NASA APOD 功能` section if they want daily astronomy
+  content.
+- When APOD was requested but `STARSKILL_NASA_API_KEY` is absent, state that
+  the feature is unavailable because the local environment is not configured,
+  and tell the user to set the key in their local terminal using the README's
+  hidden-input instructions before restarting the local service or MCP client.
+- When APOD was requested with a configured key, report only the actual
+  `fresh`, `cached`, or `unavailable` source status returned by the provider.
+
+Never ask the user to paste a key into chat, task JSON, source code, or an
+artifact. Never print, log, serialize, or echo the key. A configured key does
+not establish that an APOD request succeeded; preserve any structured
+unavailable state and its issue code.
 
 ## Verify the Result
 

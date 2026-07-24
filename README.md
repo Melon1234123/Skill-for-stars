@@ -308,32 +308,53 @@ SHA-256 和行数校验的本地缓存。普通启动、`auto`/`bundled` 渲染�
 可见性或观测安全，也不使用实时光污染数据。请由人类核对天气、云量、地平线遮挡、
 设备和现场安全。
 
-### Optional outreach enhancements
+### 可选的 NASA APOD 功能
 
-No API key, Black Marble snapshot, or desktop Stellarium installation is
-required for `sky-chart`. The following environment variables enhance only
-existing optional outreach or MCP routes; they are not prerequisites for the
-local visual sky chart:
+`sky-chart`、M42 观测规划和 SDSS 图像不需要 NASA 密钥。`STARSKILL_NASA_API_KEY`
+只用于 NASA APOD（Astronomy Picture of the Day）可选功能，即 Web 的
+`GET /v1/nasa/apod` 和 MCP 的 `get_nasa_feature`。未设置时，该功能会返回
+`availability: "unavailable"` 与 `issue_code: "nasa_api_key_missing"`，并且
+不会向 NASA 发起请求。
+
+1. 在 [NASA API](https://api.nasa.gov/) 申请自己的 API key。
+2. 在启动 StarSkill 服务的同一个 macOS/zsh 终端中，以隐藏输入方式设置密钥：
+
+   ```zsh
+   read -rs "STARSKILL_NASA_API_KEY?NASA API key: "
+   printf '\n'
+   export STARSKILL_NASA_API_KEY
+   ```
+
+   不要在聊天、任务 JSON、截图、Git 仓库或 shell 历史中粘贴密钥。
+3. 在该终端启动本地服务；密钥只会继承给这个服务进程：
+
+   ```bash
+   .venv/bin/starskill sky-chart --open
+   ```
+
+4. 另开一个终端验证 APOD 路由。省略 `date` 可请求当天内容，日期必须使用
+   `YYYY-MM-DD`：
+
+   ```bash
+   curl -fsS 'http://127.0.0.1:8000/v1/nasa/apod?date=2026-01-10'
+   ```
+
+   MCP 客户端可调用 `get_nasa_feature`，并传入可选的 `date` 参数。成功响应只
+   返回日期、标题、媒体 URL、说明、版权和来源状态，绝不返回密钥。`fresh`、
+   `cached` 和 `unavailable` 都是有效状态；只有真实响应显示 `fresh` 或 `cached`
+   才表示 APOD 数据可用。
+5. 服务停止后，清除当前终端中的密钥：
+
+   ```bash
+   unset STARSKILL_NASA_API_KEY
+   ```
+
+其他可选环境变量不影响核心星图功能：
 
 | Variable | Optional effect when configured | Behavior when absent |
 | --- | --- | --- |
-| `STARSKILL_NASA_API_KEY` | Allows the NASA APOD provider to request its optional feature. Keep the key in the local process environment only. | The NASA panel is explicitly `unavailable`; the provider makes no request without a key. |
 | `STARSKILL_LIGHT_POLLUTION_SNAPSHOT` | Points to a local, versioned NASA Black Marble snapshot. | The light-pollution panel is explicitly `unavailable`; it does not claim a live measurement. |
 | `STARSKILL_STELLARIUM_BASE_URL` | Optionally overrides the local loopback desktop Stellarium RemoteControl origin. | `sync_stellarium` keeps its default `http://127.0.0.1:8090`; if the desktop service is absent or unreachable, it returns structured `ok: false, error: connection_error` without blocking core workflows. |
-
-The following APOD check is deliberately opt-in and is not part of the offline
-test suite or the fresh-clone acceptance procedure. Run it only after setting a
-nonempty private key. It never prints the key; `fresh`, `cached`, and
-`unavailable` are all valid outcomes, with `unavailable` denoting service
-degradation rather than a CI failure:
-
-```bash
-if [ -n "${STARSKILL_NASA_API_KEY:-}" ]; then
-  .venv/bin/python -c 'from starskill.nasa import NasaApodProvider; print(NasaApodProvider.from_environment().get_feature(None).source.availability)'
-else
-  printf '%s\n' 'STARSKILL_NASA_API_KEY is not set; skipping APOD smoke test.'
-fi
-```
 
 - [Skill 使用说明](skills/run-starskill/SKILL.md)
 - [CLI 契约](skills/run-starskill/references/cli-contract.md)
