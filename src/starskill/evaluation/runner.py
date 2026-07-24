@@ -77,7 +77,7 @@ def execute_case(
 
     record = ExecutionRecord(
         recorder="starskill.evaluation.runner",
-        schema_version=1,
+        schema_version=2,
         case_id=case.case_id,
         case_kind=case.kind,
         role=case.role,

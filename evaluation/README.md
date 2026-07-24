@@ -15,6 +15,13 @@ Agent score still requires the external sequence below. Its score bundles set
 `evidence_mode: script_owned_engineering`, accept only `execution.json`, and calculate only
 machine-check dimensions; reviewer, escalation, and bonus evidence are rejected in this mode.
 
+New script-owned records use execution-record schema v2. They record only the safe
+environment evidence needed for replay: `source_path` and an `environment` object containing
+only `PYTHONPATH`. Replay requires both `source_path` and the first `PYTHONPATH` component to
+resolve to the evaluator's trusted repository `src` directory. Legacy schema v1 records remain
+replayable with their original field set; because v1 did not capture source-environment evidence,
+replay does not invent or attribute that evidence during compatibility validation.
+
 ## Required sequence
 
 1. Load one case manifest.

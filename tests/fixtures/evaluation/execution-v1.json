@@ -1,0 +1,25 @@
+{
+  "artifact_sha256": {},
+  "case_id": "failure-invalid-timezone",
+  "case_kind": "failure",
+  "command_argv": [
+    "{python_executable}",
+    "-m",
+    "starskill",
+    "validate",
+    "{run_dir}/task.json"
+  ],
+  "completed_at": "2026-07-24T15:12:18.178663+00:00",
+  "exit_code_file": "{run_dir}/exit_code.txt",
+  "recorder": "starskill.evaluation.runner",
+  "return_code": 2,
+  "role": "teacher",
+  "run_dir": "{run_dir}",
+  "schema_version": 1,
+  "started_at": "2026-07-24T15:12:17.049582+00:00",
+  "stderr_file": "{run_dir}/stderr.txt",
+  "stdout_file": "{run_dir}/stdout.txt",
+  "task_path": "{run_dir}/task.json",
+  "workflow": "validate",
+  "working_directory": "{project_root}"
+}

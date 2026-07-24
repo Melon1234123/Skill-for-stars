@@ -76,7 +76,7 @@ class EvaluationCase(EvaluationModel):
     prompt_file: str
 
 
-class ExecutionRecord(EvaluationModel):
+class ExecutionRecordV1(EvaluationModel):
     recorder: Literal["starskill.evaluation.runner"]
     schema_version: Literal[1]
     case_id: str = Field(min_length=1)
@@ -88,8 +88,6 @@ class ExecutionRecord(EvaluationModel):
     task_path: str = Field(min_length=1)
     run_dir: str = Field(min_length=1)
     working_directory: str = Field(min_length=1)
-    source_path: str = Field(min_length=1)
-    environment: dict[str, str]
     command_argv: list[str] = Field(min_length=5)
     return_code: int
     started_at: str = Field(min_length=1)
@@ -98,6 +96,12 @@ class ExecutionRecord(EvaluationModel):
     stderr_file: str = Field(min_length=1)
     exit_code_file: str = Field(min_length=1)
     artifact_sha256: dict[str, str]
+
+
+class ExecutionRecord(ExecutionRecordV1):
+    schema_version: Literal[2]
+    source_path: str = Field(min_length=1)
+    environment: dict[str, str]
 
 
 class CheckIssue(EvaluationModel):

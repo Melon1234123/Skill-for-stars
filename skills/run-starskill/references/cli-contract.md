@@ -134,7 +134,12 @@ The harness does not create child Agents inside this repository and does not cal
 records one real CLI process in `execution.json`. The record contains copied case/task inputs,
 argv, exit code, stdout/stderr paths, and SHA-256 hashes for every captured artifact. Replay
 accepts this evidence without an Agent response only when all record identities, paths, command
-shape, copied inputs, exit code, and hashes validate. `acceptance --output-dir <new-root>` derives
+shape, copied inputs, exit code, and hashes validate. New records use schema v2 and preserve only
+safe source-environment evidence: `source_path` plus an `environment` object whose sole key is
+`PYTHONPATH`. Replay binds both `source_path` and the first `PYTHONPATH` component to the trusted
+repository `src` directory. Legacy schema v1 records remain replayable using their original
+field set; replay does not fabricate source-environment evidence that v1 never captured.
+`acceptance --output-dir <new-root>` derives
 `runs`, `scores`, and `reports` below that root and writes `reports/acceptance.json`; the legacy
 explicit `--run-root`, `--score-root`, and `--output-dir` layout remains accepted. Acceptance
 repeats every core case three times and every variant once; the current matrix has 19 runs. It is

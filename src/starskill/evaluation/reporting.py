@@ -14,7 +14,15 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from starskill.evaluation.cases import load_cases
 from starskill.evaluation.checks import check_run
-from starskill.evaluation.models import EvaluationCase, EvaluationSummary, ExecutionRecord, MachineCheckReport, ReviewReport, ScoreReport
+from starskill.evaluation.models import (
+    EvaluationCase,
+    EvaluationSummary,
+    ExecutionRecord,
+    ExecutionRecordV1,
+    MachineCheckReport,
+    ReviewReport,
+    ScoreReport,
+)
 from starskill.evaluation.scoring import BonusEvidence, aggregate_scores, score_case
 
 
@@ -60,6 +68,8 @@ NORMAL_REVIEWER_BY_WORKER_ROLE = {
     "outreach": "teacher",
     "research": "outreach",
 }
+
+_TRUSTED_SOURCE_PATH = Path(__file__).resolve().parents[2]
 
 
 class ScoreBundle(BaseModel):
@@ -408,7 +418,7 @@ def _validate_script_execution_record(
 ) -> ExecutionEvidence:
     try:
         payload = _load_json_object(execution_file, "execution_file")
-        record = ExecutionRecord.model_validate(payload)
+        record = _load_execution_record(payload)
         resolved_execution = _resolve_run_evidence_path(run_dir, str(execution_file.resolve()), "execution_file")
         expected_task = (run_dir / "task.json").resolve()
         expected_case = (run_dir / "case.json").resolve()
@@ -426,10 +436,16 @@ def _validate_script_execution_record(
             or Path(record.working_directory).resolve() != expected_working_directory
         ):
             raise ValueError("execution.json identity does not match the declared case")
-        if set(record.environment) != {"PYTHONPATH"} or record.environment[
-            "PYTHONPATH"
-        ].split(os.pathsep, maxsplit=1)[0] != record.source_path:
-            raise ValueError("execution.json source environment is invalid")
+        if isinstance(record, ExecutionRecord):
+            pythonpath_source = record.environment.get("PYTHONPATH", "").split(
+                os.pathsep, maxsplit=1
+            )[0]
+            if (
+                set(record.environment) != {"PYTHONPATH"}
+                or Path(record.source_path).resolve() != _TRUSTED_SOURCE_PATH
+                or Path(pythonpath_source).resolve() != _TRUSTED_SOURCE_PATH
+            ):
+                raise ValueError("execution.json source environment is invalid")
         captured_case = _load_json_object(expected_case, "case.json")
         if any(
             captured_case.get(field) != getattr(case, field)
@@ -455,6 +471,15 @@ def _validate_script_execution_record(
         raise ReportError("invalid_execution_evidence", "script-owned execution evidence is invalid", details=str(exc)) from exc
 
 
+def _load_execution_record(payload: dict[str, object]) -> ExecutionRecordV1 | ExecutionRecord:
+    schema_version = payload.get("schema_version")
+    if schema_version == 1:
+        return ExecutionRecordV1.model_validate(payload)
+    if schema_version == 2:
+        return ExecutionRecord.model_validate(payload)
+    raise ValueError(f"unsupported execution.json schema_version: {schema_version!r}")
+
+
 def _project_root_for_task_path(task_path: Path) -> Path:
     for candidate in task_path.resolve().parents:
         if (candidate / "pyproject.toml").is_file():
@@ -463,7 +488,10 @@ def _project_root_for_task_path(task_path: Path) -> Path:
 
 
 def _validate_script_command(
-    record: ExecutionRecord, case: EvaluationCase, task_path: Path, run_dir: Path
+    record: ExecutionRecordV1 | ExecutionRecord,
+    case: EvaluationCase,
+    task_path: Path,
+    run_dir: Path,
 ) -> None:
     command = record.command_argv
     if command[:4] != [command[0], "-m", "starskill", case.workflow] or command[4] != str(task_path):

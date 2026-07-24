@@ -323,6 +323,20 @@ def test_evaluation_readme_documents_external_orchestration() -> None:
     assert "live smoke" in text.lower()
 
 
+def test_public_contract_documents_execution_record_schema_versions() -> None:
+    paths = [
+        PROJECT_ROOT / "evaluation/README.md",
+        PROJECT_ROOT / "skills/run-starskill/references/cli-contract.md",
+    ]
+
+    for path in paths:
+        text = path.read_text(encoding="utf-8").lower()
+        assert "schema v2" in text
+        assert "legacy schema v1" in text
+        assert "`source_path`" in text
+        assert "`pythonpath`" in text
+
+
 def test_public_contracts_document_generalized_relationship_semantics() -> None:
     paths = [
         PROJECT_ROOT / "README.md",
