@@ -5,14 +5,15 @@
   "task_path": "evaluation/tasks/failure-no-observation-window.json",
   "workflow": "run",
   "expected_exit_code": 0,
-  "expected_status": "degraded",
+  "expected_status": "success",
   "required_files": ["run.json", "result.json"],
   "artifacts": [
     {"path": "run.json", "kind": "json"},
     {"path": "result.json", "kind": "json"}
   ],
   "json_assertions": [
-    {"file": "run.json", "pointer": "/status", "equals": "degraded"}
+    {"file": "run.json", "pointer": "/status", "equals": "success"},
+    {"file": "result.json", "pointer": "/windows", "equals": []}
   ],
   "numeric_assertions": [],
   "review_focus": [

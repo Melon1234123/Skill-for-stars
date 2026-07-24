@@ -2,6 +2,19 @@
 
 This repository ships prompts, manifests, replay tooling, and scoring logic for an external evaluation harness. It 不创建 Agent, does not create child Agents inside the repository, and does not call an LLM API. Worker and reviewer orchestration must happen outside the repo.
 
+## Script-owned Engineering Acceptance
+
+`python scripts/evaluate_starskill.py acceptance` is a separate release gate. It runs the
+three core cases three times each and the six variants once, then records the actual CLI argv,
+copied inputs, stdout, stderr, exit code, and artifact hashes in `execution.json`. Its output
+declares `mode: script_owned_engineering_acceptance`.
+
+Script-owned engineering acceptance does not replace external Worker or Reviewer evidence. It
+does not create Agents, call an LLM, write `response.md`, or write `tool_calls.jsonl`; a formal
+Agent score still requires the external sequence below. Its score bundles set
+`evidence_mode: script_owned_engineering`, accept only `execution.json`, and calculate only
+machine-check dimensions; reviewer, escalation, and bonus evidence are rejected in this mode.
+
 ## Required sequence
 
 1. Load one case manifest.

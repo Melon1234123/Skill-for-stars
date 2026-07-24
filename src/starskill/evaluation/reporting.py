@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import hashlib
 import math
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
@@ -12,7 +13,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from starskill.evaluation.cases import load_cases
 from starskill.evaluation.checks import check_run
-from starskill.evaluation.models import EvaluationCase, EvaluationSummary, MachineCheckReport, ReviewReport, ScoreReport
+from starskill.evaluation.models import EvaluationCase, EvaluationSummary, ExecutionRecord, MachineCheckReport, ReviewReport, ScoreReport
 from starskill.evaluation.scoring import BonusEvidence, aggregate_scores, score_case
 
 
@@ -36,6 +37,16 @@ class RawRunInputs(BaseModel):
     exit_code_file: str | None = None
     tool_calls_file: str | None = None
     response_file: str | None = None
+    execution_file: str | None = None
+
+
+@dataclass(frozen=True)
+class ExecutionEvidence:
+    role: str
+    return_code: int
+    stdout_file: Path
+    stderr_file: Path
+    execution_file: Path | None
 
 
 _EXECUTION_RECORD_FIELDS = {
@@ -64,6 +75,7 @@ class ScoreBundle(BaseModel):
     review: dict[str, object] | None
     bonus: dict[str, object] = Field(default_factory=dict)
     score: ScoreReport
+    evidence_mode: Literal["external_worker", "script_owned_engineering"] = "external_worker"
     review_path: str | None = None
     review_sha256: str | None = None
     escalation: dict[str, object] | None = None
@@ -84,9 +96,11 @@ def write_case_reports(
     output_dir: Path,
     stdout_file: Path | None = None,
     stderr_file: Path | None = None,
+    execution_file: Path | None = None,
     bonus: dict[str, object] | None = None,
     review_file: Path | None = None,
     worker_role: str | None = None,
+    evidence_mode: Literal["external_worker", "script_owned_engineering"] = "external_worker",
     escalation: dict[str, object] | None = None,
     escalation_file: Path | None = None,
 ) -> ScoreBundle:
@@ -104,8 +118,13 @@ def write_case_reports(
         stdout_file=str(stdout_file.resolve()) if stdout_file is not None else None,
         stderr_file=str(stderr_file.resolve()) if stderr_file is not None else None,
         exit_code_file=str((run_dir / "exit_code.txt").resolve()),
-        tool_calls_file=str((run_dir / "tool_calls.jsonl").resolve()),
-        response_file=str((run_dir / "response.md").resolve()),
+        tool_calls_file=(
+            None if execution_file is not None else str((run_dir / "tool_calls.jsonl").resolve())
+        ),
+        response_file=(
+            None if execution_file is not None else str((run_dir / "response.md").resolve())
+        ),
+        execution_file=str(execution_file.resolve()) if execution_file is not None else None,
     )
 
     _write_json(
@@ -133,6 +152,7 @@ def write_case_reports(
         review=review.model_dump(mode="json") if review is not None else None,
         bonus=dict(sorted((bonus or {}).items())),
         score=score,
+        evidence_mode=evidence_mode,
         review_path=str(review_file.resolve()) if review_file is not None else None,
         review_sha256=_file_sha256(review_file) if review_file is not None else None,
         escalation=escalation,
@@ -221,6 +241,7 @@ def _validate_bundle_against_evidence(
     }
     if machine_run != expected_machine_run:
         raise ReportError("evidence_mismatch", "machine check run data differs from score bundle raw inputs")
+    _validate_evidence_mode(bundle)
     _validate_raw_evidence(bundle, case, run_dir)
     try:
         recorded_machine = MachineCheckReport.model_validate(machine_report)
@@ -238,15 +259,67 @@ def _validate_bundle_against_evidence(
     review = _validate_review(bundle, case, rederived_machine)
     _validate_bonus_evidence(bundle.bonus, run_dir, case)
     try:
-        rederived_score = score_case(rederived_machine, review, bundle.bonus)
+        rederived_score = score_case(
+            rederived_machine,
+            review,
+            bundle.bonus,
+            script_owned_engineering=bundle.evidence_mode == "script_owned_engineering",
+        )
     except (ValidationError, ValueError) as exc:
         raise ReportError("invalid_score_report", "bonus evidence did not match required schema", details=str(exc)) from exc
     if bundle.score != rederived_score:
         raise ReportError("evidence_mismatch", "score.json does not match machine, review, and bonus evidence")
 
 
+def _validate_evidence_mode(bundle: ScoreBundle) -> None:
+    script_owned = bundle.evidence_mode == "script_owned_engineering"
+    if script_owned:
+        if bundle.raw_inputs.execution_file is None:
+            raise ReportError(
+                "evidence_mismatch",
+                "script-owned engineering score bundles require execution.json evidence",
+            )
+        if any(
+            (
+                bundle.review is not None,
+                bundle.review_path is not None,
+                bundle.review_sha256 is not None,
+                bundle.escalation is not None,
+                bundle.escalation_path is not None,
+                bundle.escalation_sha256 is not None,
+            )
+        ):
+            raise ReportError(
+                "evidence_mismatch",
+                "script-owned engineering score bundles cannot include reviewer evidence",
+            )
+        if bundle.bonus:
+            raise ReportError(
+                "evidence_mismatch",
+                "script-owned engineering score bundles cannot include bonus evidence",
+            )
+        return
+    if bundle.raw_inputs.execution_file is not None:
+        raise ReportError(
+            "evidence_mismatch",
+            "external Worker score bundles cannot use script-owned execution evidence",
+        )
+
+
 def _validate_raw_evidence(bundle: ScoreBundle, case: EvaluationCase, run_dir: Path) -> None:
     raw = bundle.raw_inputs
+    if raw.execution_file is not None:
+        evidence = validate_execution_evidence(case, run_dir)
+        if evidence.execution_file is None:
+            raise ReportError("evidence_mismatch", "script-owned execution evidence was not recovered")
+        if (
+            evidence.return_code != raw.return_code
+            or evidence.stdout_file != _resolve_run_evidence_path(run_dir, raw.stdout_file, "stdout_file")
+            or evidence.stderr_file != _resolve_run_evidence_path(run_dir, raw.stderr_file, "stderr_file")
+            or evidence.execution_file != _resolve_run_evidence_path(run_dir, raw.execution_file, "execution_file")
+        ):
+            raise ReportError("evidence_mismatch", "score bundle differs from script-owned execution evidence")
+        return
     paths = {
         "stdout_file": raw.stdout_file,
         "stderr_file": raw.stderr_file,
@@ -282,10 +355,18 @@ def _validate_raw_evidence(bundle: ScoreBundle, case: EvaluationCase, run_dir: P
 def validate_execution_evidence(
     case: EvaluationCase,
     run_dir: Path,
-    return_code: int,
-    stdout_file: Path,
-    stderr_file: Path,
-) -> str:
+    return_code: int | None = None,
+    stdout_file: Path | None = None,
+    stderr_file: Path | None = None,
+) -> ExecutionEvidence:
+    execution_file = run_dir / "execution.json"
+    if execution_file.is_file():
+        return _validate_script_execution_record(case, run_dir, execution_file)
+    if return_code is None or stdout_file is None or stderr_file is None:
+        raise ReportError(
+            "invalid_execution_evidence",
+            "external Worker evidence requires --return-code, stdout, and stderr paths",
+        )
     raw = RawRunInputs(
         return_code=return_code,
         stdout_file=str(stdout_file.resolve()),
@@ -307,11 +388,100 @@ def validate_execution_evidence(
             raise ReportError("invalid_execution_evidence", "--return-code does not match captured exit_code.txt")
         if not resolved["response_file"].read_text(encoding="utf-8").strip():
             raise ReportError("invalid_execution_evidence", "response.md must not be empty")
-        return _validate_tool_call_records(
+        role = _validate_tool_call_records(
             resolved["tool_calls_file"], case, run_dir, return_code, None, resolved
+        )
+        return ExecutionEvidence(
+            role=role,
+            return_code=return_code,
+            stdout_file=resolved["stdout_file"],
+            stderr_file=resolved["stderr_file"],
+            execution_file=None,
         )
     except (OSError, UnicodeDecodeError, ValueError, json.JSONDecodeError) as exc:
         raise ReportError("invalid_execution_evidence", "captured worker evidence is invalid", details=str(exc)) from exc
+
+
+def _validate_script_execution_record(
+    case: EvaluationCase, run_dir: Path, execution_file: Path
+) -> ExecutionEvidence:
+    try:
+        payload = _load_json_object(execution_file, "execution_file")
+        record = ExecutionRecord.model_validate(payload)
+        resolved_execution = _resolve_run_evidence_path(run_dir, str(execution_file.resolve()), "execution_file")
+        expected_task = (run_dir / "task.json").resolve()
+        expected_case = (run_dir / "case.json").resolve()
+        expected_working_directory = _project_root_for_task_path(Path(case.task_path))
+        stdout_file = _resolve_run_evidence_path(run_dir, record.stdout_file, "stdout_file")
+        stderr_file = _resolve_run_evidence_path(run_dir, record.stderr_file, "stderr_file")
+        exit_code_file = _resolve_run_evidence_path(run_dir, record.exit_code_file, "exit_code_file")
+        if (
+            record.case_id != case.case_id
+            or record.case_kind != case.kind
+            or record.role != case.role
+            or record.workflow != case.workflow
+            or Path(record.run_dir).resolve() != run_dir.resolve()
+            or Path(record.task_path).resolve() != expected_task
+            or Path(record.working_directory).resolve() != expected_working_directory
+        ):
+            raise ValueError("execution.json identity does not match the declared case")
+        captured_case = _load_json_object(expected_case, "case.json")
+        if any(
+            captured_case.get(field) != getattr(case, field)
+            for field in ("case_id", "kind", "role", "workflow", "expected_exit_code", "expected_status")
+        ):
+            raise ValueError("captured case.json identity does not match the canonical case")
+        if not expected_task.is_file() or expected_task.read_bytes() != Path(case.task_path).read_bytes():
+            raise ValueError("captured task.json does not match the canonical task")
+        _validate_script_command(record, case, expected_task, run_dir)
+        if int(exit_code_file.read_text(encoding="utf-8").strip()) != record.return_code:
+            raise ValueError("execution.json return_code does not match exit_code.txt")
+        actual_hashes = _artifact_hashes(run_dir)
+        if record.artifact_sha256 != actual_hashes:
+            raise ValueError("execution.json artifact hashes do not match captured files")
+        return ExecutionEvidence(
+            role=record.role,
+            return_code=record.return_code,
+            stdout_file=stdout_file,
+            stderr_file=stderr_file,
+            execution_file=resolved_execution,
+        )
+    except (OSError, UnicodeDecodeError, ValueError, ValidationError) as exc:
+        raise ReportError("invalid_execution_evidence", "script-owned execution evidence is invalid", details=str(exc)) from exc
+
+
+def _project_root_for_task_path(task_path: Path) -> Path:
+    for candidate in task_path.resolve().parents:
+        if (candidate / "pyproject.toml").is_file():
+            return candidate
+    raise ValueError(f"canonical task path is outside a project checkout: {task_path}")
+
+
+def _validate_script_command(
+    record: ExecutionRecord, case: EvaluationCase, task_path: Path, run_dir: Path
+) -> None:
+    command = record.command_argv
+    if command[:4] != [command[0], "-m", "starskill", case.workflow] or command[4] != str(task_path):
+        raise ValueError("execution.json command does not invoke the captured case task")
+    if case.workflow == "validate" and len(command) == 5:
+        return
+    if case.workflow == "run" and len(command) == 9 and command[5:7] == ["--output-dir", str(run_dir)] and command[7] == "--cache-dir":
+        return
+    if case.workflow == "relationship" and command[5:] == [
+        "--output", str(run_dir / "relationship.csv"), "--metadata", str(run_dir / "relationship.json")
+    ]:
+        return
+    if case.workflow == "fetch-image" and len(command) == 9 and command[5:7] == ["--output-dir", str(run_dir)] and command[7] == "--cache-dir":
+        return
+    raise ValueError("execution.json command does not match the supported workflow contract")
+
+
+def _artifact_hashes(run_dir: Path) -> dict[str, str]:
+    return {
+        path.relative_to(run_dir).as_posix(): hashlib.sha256(path.read_bytes()).hexdigest()
+        for path in sorted(run_dir.rglob("*"))
+        if path.is_file() and path.name != "execution.json"
+    }
 
 
 def _validate_tool_call_records(
@@ -727,7 +897,13 @@ def _render_case_summary(
     critical_issues = [issue for issue in machine.issues if issue.severity == "critical"]
     reviewer_critical_issues = review.critical_issues if review is not None else []
     reviewer_issues = review.issues if review is not None else []
-    reviewer_recommendation = review.recommendation if review is not None else "missing"
+    reviewer_recommendation = (
+        review.recommendation
+        if review is not None
+        else "not_applicable"
+        if bundle.evidence_mode == "script_owned_engineering"
+        else "missing"
+    )
     checked = "\n".join(f"- `{path}`" for path in machine.checked_files) or "- None"
     machine_critical = (
         "\n".join(
@@ -758,6 +934,7 @@ def _render_case_summary(
         f"# Evaluation Replay Summary: {case.case_id}\n\n"
         f"- Case ID: `{case.case_id}`\n"
         f"- Case kind: `{case.kind}`\n"
+        f"- Evidence mode: `{bundle.evidence_mode}`\n"
         f"- Hard-gate passed: `{score.hard_gate_passed}`\n"
         f"- Reviewer recommendation: `{reviewer_recommendation}`\n\n"
         "## Calculated facts\n\n"

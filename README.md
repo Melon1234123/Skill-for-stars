@@ -198,6 +198,24 @@ research reviewer -> teacher Worker
 
 评测输入、提示词、案例和回放命令位于 [`evaluation/`](evaluation/)。外部运行证据推荐写入被 `.gitignore` 排除的 `evaluation-runs/`，避免把生成结果和凭据提交到仓库。
 
+### 脚本化工程验收
+
+下面的命令在新目录中真实执行所有固定工作流、保存每个子进程的输入副本、argv、
+stdout、stderr、退出码与 SHA-256，然后回放并聚合结果。它运行 3 个 core 案例各 3
+次以及 6 个 variant 各 1 次，共 15 次：
+
+```bash
+.venv/bin/python scripts/evaluate_starskill.py acceptance \
+  --run-root evaluation-runs/script-owned/runs \
+  --score-root evaluation-runs/script-owned/scores \
+  --output-dir evaluation-runs/script-owned/reports
+```
+
+成功输出中的 `mode` 为 `script_owned_engineering_acceptance`。该模式是工程运行门禁，
+每份评分包标记为 `evidence_mode: script_owned_engineering`，只计算机器可复算维度，
+不生成或接受 Agent 回复、reviewer 结论或 bonus 证据；正式 Agent 评分仍需按
+[`evaluation/README.md`](evaluation/README.md) 的外部 Worker/Reviewer 流程提供真实证据。
+
 ## 目录结构
 
 ```text
@@ -207,7 +225,7 @@ evaluation/cases/                      core、variant、failure、open 案例
 evaluation/prompts/                    Worker、Reviewer、Adjudicator 提示词
 evaluation/tasks/                      可直接回放的任务输入
 evaluation/reports/                    评测报告目录说明
-scripts/evaluate_starskill.py          replay 和 aggregate 评测工具
+scripts/evaluate_starskill.py          execute、replay、aggregate 与工程验收工具
 examples/                              三个主要案例输入
 tests/                                 单元、CLI、回放和评测测试
 docs/starskill-evaluation/             评测设计、修复简报和复核历史

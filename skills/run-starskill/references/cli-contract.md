@@ -123,6 +123,17 @@ Each nonblank line is one strict JSON object with exactly these keys: `tool`, `c
 
 The harness does not create child Agents inside this repository and does not call an LLM API through this CLI contract. It must inspect actual files and exit codes rather than trusting natural-language summaries. Do not fabricate coordinates, image outputs, provenance, cache behavior, success states, or missing files. Preserve structured failures and degraded states exactly as produced.
 
+### Script-owned engineering capture
+
+`python scripts/evaluate_starskill.py execute --case <case.json> --run-dir <new-directory>`
+records one real CLI process in `execution.json`. The record contains copied case/task inputs,
+argv, exit code, stdout/stderr paths, and SHA-256 hashes for every captured artifact. Replay
+accepts this evidence without an Agent response only when all record identities, paths, command
+shape, copied inputs, exit code, and hashes validate. `acceptance` repeats every core case three
+times and every variant once; it is an engineering gate, not external Worker or reviewer evidence.
+Its score bundles use `evidence_mode: script_owned_engineering` and include only machine-check
+dimensions. Reviewer, escalation, and bonus evidence are invalid for this mode.
+
 ## Review Checklist
 
 - Confirm local date, timezone, longitude, and latitude.

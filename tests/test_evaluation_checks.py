@@ -432,36 +432,39 @@ def test_fetch_image_success_requires_downloaded_true_stdout(tmp_path, stdout: s
     assert any(issue.code == "missing_success_evidence" for issue in report.issues)
 
 
-def test_valid_degraded_run_with_exit_code_5_passes(tmp_path) -> None:
+def test_successful_no_window_run_with_exit_code_0_passes(tmp_path) -> None:
     case = load_case(PROJECT_ROOT / "evaluation/cases/variants/variant-m42-no-window.json")
-    _write_json(tmp_path / "result.json", {"target": {"canonical_name": "M 42"}})
+    _write_json(tmp_path / "result.json", {"target": {"canonical_name": "M 42"}, "windows": []})
     _write_run_manifest(
         tmp_path,
-        status="degraded",
-        artifacts=[_artifact_record(tmp_path, "result.json")],
-        issues=[{"stage": "planning", "code": "no_observation_window", "message": "No valid window"}],
-    )
-
-    report = check_run(case, tmp_path, 5, "{}", "")
-
-    assert report.hard_gate_passed is True
-    assert report.exit_code == 5
-
-
-def test_degraded_run_requires_non_empty_issue_evidence(tmp_path) -> None:
-    case = load_case(PROJECT_ROOT / "evaluation/cases/variants/variant-m42-no-window.json")
-    _write_json(tmp_path / "result.json", {"target": {"canonical_name": "M 42"}})
-    _write_run_manifest(
-        tmp_path,
-        status="degraded",
+        status="success",
         artifacts=[_artifact_record(tmp_path, "result.json")],
         issues=[],
     )
 
-    report = check_run(case, tmp_path, 5, "{}", "")
+    report = check_run(case, tmp_path, 0, "{}", "")
+
+    assert report.hard_gate_passed is True
+    assert report.exit_code == 0
+
+
+def test_successful_no_window_run_rejects_a_non_empty_window_list(tmp_path) -> None:
+    case = load_case(PROJECT_ROOT / "evaluation/cases/variants/variant-m42-no-window.json")
+    _write_json(
+        tmp_path / "result.json",
+        {"target": {"canonical_name": "M 42"}, "windows": [{"sample_count": 1}]},
+    )
+    _write_run_manifest(
+        tmp_path,
+        status="success",
+        artifacts=[_artifact_record(tmp_path, "result.json")],
+        issues=[],
+    )
+
+    report = check_run(case, tmp_path, 0, "{}", "")
 
     assert report.hard_gate_passed is False
-    assert any(issue.code == "missing_failure_evidence" for issue in report.issues)
+    assert any(issue.code == "json_assertion_mismatch" for issue in report.issues)
 
 
 def test_expected_target_service_failure_with_exit_code_4_passes(tmp_path) -> None:

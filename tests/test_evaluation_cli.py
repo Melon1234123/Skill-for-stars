@@ -2,10 +2,14 @@ import json
 from contextlib import redirect_stderr, redirect_stdout
 from io import StringIO
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
+import scripts.evaluate_starskill as evaluation_cli
 from scripts.evaluate_starskill import main
+from starskill.evaluation.cases import load_case
+from starskill.evaluation.models import EvaluationSummary
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -472,3 +476,99 @@ def test_help_lists_bonus_file_option() -> None:
             pass
 
     assert "--bonus-file" in stdout.getvalue()
+
+
+def test_execute_command_reports_a_script_owned_record(tmp_path, monkeypatch) -> None:
+    run_dir = tmp_path / "run"
+
+    def fake_execute(_case_path, captured_run_dir, **_kwargs):
+        captured_run_dir.mkdir(parents=True)
+        return SimpleNamespace(
+            case_id="failure-invalid-timezone",
+            return_code=2,
+            run_dir=str(captured_run_dir.resolve()),
+        )
+
+    monkeypatch.setattr(evaluation_cli, "execute_case", fake_execute)
+    stdout = StringIO()
+    with redirect_stdout(stdout):
+        exit_code = evaluation_cli.main(
+            [
+                "execute",
+                "--case",
+                str(PROJECT_ROOT / "evaluation/cases/failures/failure-invalid-timezone.json"),
+                "--run-dir",
+                str(run_dir),
+            ]
+        )
+
+    payload = json.loads(stdout.getvalue())
+    assert exit_code == 0
+    assert payload == {
+        "case_id": "failure-invalid-timezone",
+        "execution_file": str((run_dir / "execution.json").resolve()),
+        "ok": True,
+        "return_code": 2,
+        "run_dir": str(run_dir.resolve()),
+    }
+
+
+def test_acceptance_repeats_cores_and_runs_each_variant_once(tmp_path, monkeypatch) -> None:
+    executed: list[tuple[str, Path]] = []
+
+    def fake_execute(case_path, run_dir, **_kwargs):
+        case = load_case(case_path)
+        executed.append((case.case_id, run_dir))
+        run_dir.mkdir(parents=True)
+        return SimpleNamespace(case_id=case.case_id, return_code=case.expected_exit_code, run_dir=str(run_dir))
+
+    summary = EvaluationSummary(
+        total_runs=15,
+        hard_gate_pass_rate=1.0,
+        core_hard_gate_pass_rate=1.0,
+        variant_hard_gate_pass_rate=1.0,
+        average_base_score=89.0,
+        core_average_base_score=89.0,
+        per_case_standard_deviation={},
+        open_task_scores={},
+        critical_failures=0,
+        passed=True,
+        thresholds={},
+        decisions={},
+        reports=[],
+    )
+    monkeypatch.setattr(evaluation_cli, "execute_case", fake_execute)
+    monkeypatch.setattr(evaluation_cli, "_replay", lambda _args: 0)
+    monkeypatch.setattr(evaluation_cli, "collect_score_reports", lambda *_args, **_kwargs: [])
+    monkeypatch.setattr(evaluation_cli, "aggregate_scores", lambda _bundles: summary)
+    monkeypatch.setattr(
+        evaluation_cli,
+        "write_aggregate_reports",
+        lambda _summary, _bundles, output_dir: (output_dir / "summary.json").write_text("{}"),
+    )
+
+    exit_code = evaluation_cli.main(
+        [
+            "acceptance",
+            "--run-root",
+            str(tmp_path / "runs"),
+            "--score-root",
+            str(tmp_path / "scores"),
+            "--output-dir",
+            str(tmp_path / "aggregate"),
+        ]
+    )
+
+    cases = [
+        load_case(path)
+        for path in sorted((PROJECT_ROOT / "evaluation/cases").rglob("*.json"))
+    ]
+    expected_counts = {
+        case.case_id: 3 if case.kind == "core" else 1
+        for case in cases
+        if case.kind in {"core", "variant"}
+    }
+    actual_counts = {case_id: sum(case_id == observed for observed, _run_dir in executed) for case_id in expected_counts}
+    assert exit_code == 0
+    assert actual_counts == expected_counts
+    assert len({run_dir for _case_id, run_dir in executed}) == 15

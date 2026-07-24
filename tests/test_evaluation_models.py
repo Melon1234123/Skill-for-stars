@@ -1,7 +1,12 @@
 import pytest
 from pydantic import ValidationError
 
-from starskill.evaluation.models import EvaluationCase, EvaluationSummary, NumericAssertion
+from starskill.evaluation.models import (
+    EvaluationCase,
+    EvaluationSummary,
+    JsonAssertion,
+    NumericAssertion,
+)
 
 
 def test_evaluation_case_accepts_expected_task_contract() -> None:
@@ -57,6 +62,14 @@ def test_numeric_assertion_requires_non_negative_tolerance() -> None:
                 "absolute_tolerance": -0.1,
             }
         )
+
+
+def test_json_assertion_accepts_an_empty_array_expectation() -> None:
+    assertion = JsonAssertion.model_validate(
+        {"file": "result.json", "pointer": "/windows", "equals": []}
+    )
+
+    assert assertion.equals == []
 
 
 def test_evaluation_summary_accepts_threshold_metadata_and_decisions() -> None:

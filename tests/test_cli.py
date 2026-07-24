@@ -60,6 +60,21 @@ def test_readme_documents_python_only_sky_chart() -> None:
             )
 
 
+def test_public_docs_distinguish_script_owned_acceptance_from_agent_evaluation() -> None:
+    readme = (PROJECT_ROOT / "README.md").read_text(encoding="utf-8")
+    evaluation = (PROJECT_ROOT / "evaluation" / "README.md").read_text(encoding="utf-8")
+    contract = (
+        PROJECT_ROOT / "skills" / "run-starskill" / "references" / "cli-contract.md"
+    ).read_text(encoding="utf-8")
+
+    assert "scripts/evaluate_starskill.py acceptance" in readme
+    assert "--run-root" in readme
+    assert "script_owned_engineering_acceptance" in evaluation
+    assert "does not replace external Worker or Reviewer evidence" in evaluation
+    assert "evidence_mode: script_owned_engineering" in evaluation
+    assert "execution.json" in contract
+
+
 def test_changed_public_documents_have_no_trailing_whitespace() -> None:
     public_documents = (
         PROJECT_ROOT / "README.md",

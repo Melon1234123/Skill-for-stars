@@ -102,6 +102,22 @@ def test_score_case_returns_zero_when_reviewer_is_missing() -> None:
     assert report.issues == []
 
 
+def test_score_case_uses_only_machine_dimensions_for_script_owned_engineering() -> None:
+    report = score_case(
+        passing_machine("core-m51"),
+        None,
+        {},
+        script_owned_engineering=True,
+    )
+
+    assert report.hard_gate_passed is True
+    assert report.base_score == 89
+    assert report.bonus_score == 0
+    assert report.total_score == 89
+    assert report.dimensions["error_and_safety"] == 4
+    assert report.dimensions["role_usability"] == 0
+
+
 def test_score_case_returns_zero_when_reviewer_has_critical_issue() -> None:
     review = passing_review("core-moon").model_copy(
         update={"critical_issues": ["unsafe guidance"]}

@@ -59,7 +59,7 @@ def write_core_m42_bundle(run_dir: Path) -> None:
     )
 
 
-def write_variant_m42_degraded_bundle(run_dir: Path) -> None:
+def write_variant_m42_no_window_bundle(run_dir: Path) -> None:
     run_dir.mkdir(parents=True, exist_ok=True)
     _write_text(
         run_dir / "result.json",
@@ -67,10 +67,6 @@ def write_variant_m42_degraded_bundle(run_dir: Path) -> None:
             {
                 "target": {"canonical_name": "M 42"},
                 "windows": [],
-                "summary": {
-                    "status": "degraded",
-                    "reason": "No valid observation window found.",
-                },
             },
             ensure_ascii=False,
             indent=2,
@@ -82,7 +78,7 @@ def write_variant_m42_degraded_bundle(run_dir: Path) -> None:
         run_dir / "stdout.json",
         json.dumps(
             {
-                "status": "degraded",
+                "status": "success",
                 "output_dir": str(run_dir),
                 "message": "No valid observation window found.",
             },
@@ -95,20 +91,14 @@ def write_variant_m42_degraded_bundle(run_dir: Path) -> None:
     _write_text(run_dir / "stderr.txt", "")
     _write_run_json(
         run_dir,
-        status="degraded",
-        issues=[
-            {
-                "stage": "planning",
-                "code": "no_observation_window",
-                "message": "No valid observation window found for the requested constraints.",
-            }
-        ],
+        status="success",
+        issues=[],
         started_at="2026-07-19T10:18:36+00:00",
         completed_at="2026-07-19T10:18:37+00:00",
     )
     _write_worker_evidence(
         run_dir,
-        exit_code=5,
+        exit_code=0,
         case_id="variant-m42-no-window",
         case_kind="variant",
         worker_role="teacher",

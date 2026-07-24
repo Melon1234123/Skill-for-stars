@@ -60,6 +60,8 @@ def score_case(
     machine: MachineCheckReport,
     review: ReviewReport | None,
     bonus: dict[str, object],
+    *,
+    script_owned_engineering: bool = False,
 ) -> ScoreReport:
     zero_dimensions = {name: 0.0 for name in BASE_DIMENSION_LIMITS}
 
@@ -75,7 +77,7 @@ def score_case(
             issues=machine.issues,
         )
 
-    if review is None or review.critical_issues:
+    if review is None and not script_owned_engineering:
         return ScoreReport(
             case_id=machine.case_id,
             case_kind=machine.case_kind,
@@ -86,8 +88,23 @@ def score_case(
             dimensions=zero_dimensions,
             issues=machine.issues,
         )
+    if review is not None and review.critical_issues:
+        return ScoreReport(
+            case_id=machine.case_id,
+            case_kind=machine.case_kind,
+            hard_gate_passed=False,
+            base_score=0,
+            bonus_score=0,
+            total_score=0,
+            dimensions=zero_dimensions,
+            issues=machine.issues,
+        )
+    if script_owned_engineering and review is not None:
+        raise ValueError("script-owned engineering scoring cannot include reviewer evidence")
 
     bonus_points = BonusEvidence.model_validate(bonus)
+    if script_owned_engineering and bonus:
+        raise ValueError("script-owned engineering scoring cannot include bonus evidence")
     machine_safety = min(4.0, max(0.0, float(machine.dimension_points["machine_safety"])))
     dimensions = {
         "closed_loop": min(
@@ -104,11 +121,11 @@ def score_case(
         ),
         "error_and_safety": min(
             BASE_DIMENSION_LIMITS["error_and_safety"],
-            machine_safety + review.safety_review_points,
+            machine_safety + (review.safety_review_points if review is not None else 0),
         ),
         "role_usability": min(
             BASE_DIMENSION_LIMITS["role_usability"],
-            review.role_usability_points,
+            review.role_usability_points if review is not None else 0,
         ),
     }
     base_score = round(sum(dimensions.values()), 2)
