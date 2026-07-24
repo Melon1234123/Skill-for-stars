@@ -60,6 +60,18 @@ def test_readme_documents_python_only_sky_chart() -> None:
             )
 
 
+def test_run_starskill_skill_requires_direct_visual_delivery() -> None:
+    skill = (
+        PROJECT_ROOT / "skills" / "run-starskill" / "SKILL.md"
+    ).read_text(encoding="utf-8")
+
+    assert "## Deliver Generated Results" in skill
+    assert "Embed each verified user-relevant raster artifact with Markdown" in skill
+    assert "require the JSON's `render.png_sha256` to match the saved PNG" in skill
+    assert "center is the zenith, the outer circle is the horizon" in skill
+    assert "do not invent one" in skill
+
+
 def test_public_docs_distinguish_script_owned_acceptance_from_agent_evaluation() -> None:
     readme = (PROJECT_ROOT / "README.md").read_text(encoding="utf-8")
     evaluation = (PROJECT_ROOT / "evaluation" / "README.md").read_text(encoding="utf-8")
