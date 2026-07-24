@@ -15,6 +15,21 @@ from starskill.evaluation.models import EvaluationSummary
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 
+def _write_minimal_acceptance_project(root: Path) -> Path:
+    fixture_root = root / "acceptance-project"
+    fixture_files = (
+        "evaluation/cases/generic/generic-coordinate-coordinate.json",
+        "evaluation/tasks/generic-coordinate-coordinate.json",
+        "evaluation/prompts/workers/outreach.md",
+        "pyproject.toml",
+    )
+    for relative_path in fixture_files:
+        destination = fixture_root / relative_path
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_bytes((PROJECT_ROOT / relative_path).read_bytes())
+    return fixture_root
+
+
 def _write_worker_evidence(
     run_dir: Path, *, exit_code: int, stderr_file: Path | None = None
 ) -> None:
@@ -515,6 +530,7 @@ def test_execute_command_reports_a_script_owned_record(tmp_path, monkeypatch) ->
 
 def test_acceptance_repeats_cores_and_runs_each_variant_once(tmp_path, monkeypatch) -> None:
     executed: list[tuple[str, Path]] = []
+    replayed_score_dirs: list[Path] = []
 
     def fake_execute(case_path, run_dir, **_kwargs):
         case = load_case(case_path)
@@ -553,7 +569,13 @@ def test_acceptance_repeats_cores_and_runs_each_variant_once(tmp_path, monkeypat
         reports=[],
     )
     monkeypatch.setattr(evaluation_cli, "execute_case", fake_execute)
-    monkeypatch.setattr(evaluation_cli, "_replay", lambda _args: 0)
+
+    def fake_replay(args):
+        args.output_dir.mkdir(parents=True)
+        replayed_score_dirs.append(args.output_dir.resolve())
+        return 0
+
+    monkeypatch.setattr(evaluation_cli, "_replay", fake_replay)
     monkeypatch.setattr(evaluation_cli, "collect_score_reports", lambda *_args, **_kwargs: [])
     monkeypatch.setattr(evaluation_cli, "aggregate_scores", lambda _bundles: summary)
     monkeypatch.setattr(
@@ -562,15 +584,18 @@ def test_acceptance_repeats_cores_and_runs_each_variant_once(tmp_path, monkeypat
         lambda _summary, _bundles, output_dir: (output_dir / "summary.json").write_text("{}"),
     )
 
+    run_root = tmp_path / "runs"
+    score_root = tmp_path / "scores"
+    aggregate_root = tmp_path / "aggregate"
     exit_code = evaluation_cli.main(
         [
             "acceptance",
             "--run-root",
-            str(tmp_path / "runs"),
+            str(run_root),
             "--score-root",
-            str(tmp_path / "scores"),
+            str(score_root),
             "--output-dir",
-            str(tmp_path / "aggregate"),
+            str(aggregate_root),
         ]
     )
 
@@ -587,64 +612,65 @@ def test_acceptance_repeats_cores_and_runs_each_variant_once(tmp_path, monkeypat
     assert exit_code == 0
     assert actual_counts == expected_counts
     assert len({run_dir for _case_id, run_dir in executed}) == 19
+    assert all(path.is_relative_to(run_root.resolve()) for _case_id, path in executed)
+    assert len(replayed_score_dirs) == 19
+    assert all(path.is_relative_to(score_root.resolve()) for path in replayed_score_dirs)
+    assert (aggregate_root / "summary.json").is_file()
+    assert (aggregate_root / "acceptance.json").is_file()
+    assert not (aggregate_root / "reports").exists()
 
 
 def test_acceptance_accepts_output_root_without_explicit_run_or_score_roots(
     tmp_path, monkeypatch
 ) -> None:
-    executed_run_dirs: list[Path] = []
-    replayed_score_dirs: list[Path] = []
-
-    def fake_execute(case_path, run_dir, **_kwargs):
-        case = load_case(case_path)
-        run_dir.mkdir(parents=True)
-        executed_run_dirs.append(run_dir.resolve())
-        return SimpleNamespace(
-            case_id=case.case_id,
-            return_code=case.expected_exit_code,
-            run_dir=str(run_dir.resolve()),
-            artifact_sha256={"task.json": "0" * 64},
-        )
-
-    def fake_replay(args):
-        args.output_dir.mkdir(parents=True)
-        replayed_score_dirs.append(args.output_dir.resolve())
-        return 0
-
-    summary = EvaluationSummary(
-        total_runs=19,
-        hard_gate_pass_rate=1.0,
-        core_hard_gate_pass_rate=1.0,
-        variant_hard_gate_pass_rate=1.0,
-        average_base_score=89.0,
-        core_average_base_score=89.0,
-        per_case_standard_deviation={},
-        open_task_scores={},
-        critical_failures=0,
-        passed=True,
-        thresholds={},
-        decisions={},
-        reports=[],
-    )
-    monkeypatch.setattr(evaluation_cli, "execute_case", fake_execute)
-    monkeypatch.setattr(evaluation_cli, "_replay", fake_replay)
-    monkeypatch.setattr(evaluation_cli, "collect_score_reports", lambda *_args, **_kwargs: [])
-    monkeypatch.setattr(evaluation_cli, "aggregate_scores", lambda _bundles: summary)
+    fixture_root = _write_minimal_acceptance_project(tmp_path)
     monkeypatch.setattr(
         evaluation_cli,
-        "write_aggregate_reports",
-        lambda _summary, _bundles, output_dir: (output_dir / "summary.json").write_text("{}"),
+        "__file__",
+        str(fixture_root / "scripts" / "evaluate_starskill.py"),
     )
+    monkeypatch.setenv("PYTHONPATH", str(PROJECT_ROOT / "src"))
 
     output_root = tmp_path / "generalized-targets"
     exit_code = evaluation_cli.main(["acceptance", "--output-dir", str(output_root)])
 
+    run_dir = output_root / "runs" / "generic-coordinate-coordinate" / "recorded-01"
+    score_dir = output_root / "scores" / "generic-coordinate-coordinate" / "recorded-01"
+    reports_dir = output_root / "reports"
+    execution = json.loads((run_dir / "execution.json").read_text(encoding="utf-8"))
+    score = json.loads((score_dir / "score.json").read_text(encoding="utf-8"))
+    summary = json.loads((reports_dir / "summary.json").read_text(encoding="utf-8"))
+    acceptance = json.loads((reports_dir / "acceptance.json").read_text(encoding="utf-8"))
+
     assert exit_code == 0
     assert (output_root / "runs").is_dir()
     assert (output_root / "scores").is_dir()
-    assert (output_root / "reports" / "summary.json").is_file()
-    assert (output_root / "reports" / "acceptance.json").is_file()
-    assert len(executed_run_dirs) == 19
-    assert len(replayed_score_dirs) == 19
-    assert all(path.is_relative_to((output_root / "runs").resolve()) for path in executed_run_dirs)
-    assert all(path.is_relative_to((output_root / "scores").resolve()) for path in replayed_score_dirs)
+    assert execution["recorder"] == "starskill.evaluation.runner"
+    assert execution["return_code"] == 0
+    assert execution["command_argv"][1:4] == ["-m", "starskill", "relationship"]
+    assert execution["artifact_sha256"]["relationship.csv"]
+    assert execution["artifact_sha256"]["relationship.json"]
+    assert (run_dir / "stdout.txt").is_file()
+    assert (run_dir / "stderr.txt").read_text(encoding="utf-8") == ""
+    assert (run_dir / "exit_code.txt").read_text(encoding="utf-8") == "0\n"
+    assert score["evidence_mode"] == "script_owned_engineering"
+    assert score["score"]["hard_gate_passed"] is True
+    assert score["raw_inputs"]["execution_file"] == str((run_dir / "execution.json").resolve())
+    assert summary["total_runs"] == 1
+    assert summary["passed"] is True
+    assert (reports_dir / "summary.md").is_file()
+    assert acceptance["run_root"] == str((output_root / "runs").resolve())
+    assert acceptance["score_root"] == str((output_root / "scores").resolve())
+    assert acceptance["output_dir"] == str(reports_dir.resolve())
+    assert acceptance["runs"] == [
+        {
+            "artifact_sha256": execution["artifact_sha256"],
+            "case_id": "generic-coordinate-coordinate",
+            "execution_file": str((run_dir / "execution.json").resolve()),
+            "replay_exit_code": 0,
+            "return_code": 0,
+            "run_dir": str(run_dir.resolve()),
+            "run_name": "recorded-01",
+            "score_dir": str(score_dir.resolve()),
+        }
+    ]
