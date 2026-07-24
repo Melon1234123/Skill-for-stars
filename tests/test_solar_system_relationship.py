@@ -83,6 +83,48 @@ def test_calculate_relationship_matches_skyfield_at_three_times() -> None:
             assert value == pytest.approx(expected_value, abs=tolerance)
 
 
+def test_legacy_moon_jupiter_fields_are_adapted_from_v2() -> None:
+    assert hasattr(
+        starskill.solar_system_relationship, "calculate_astronomical_relationship"
+    ), "generic relationship calculator is missing"
+    legacy_task = make_task()
+    generic_task = schemas.AstronomicalRelationshipTask.model_validate(
+        {
+            "task_type": "astronomical_relationship",
+            "primary": {"kind": "solar_system", "body": "moon"},
+            "secondary": {"kind": "solar_system", "body": "jupiter"},
+            "observer": legacy_task.observer.model_dump(),
+            "time_range": legacy_task.time_range.model_dump(),
+            "interval_minutes": legacy_task.interval_minutes,
+        }
+    )
+
+    legacy = starskill.calculate_solar_system_relationship(legacy_task)
+    generic = starskill.solar_system_relationship.calculate_astronomical_relationship(
+        generic_task
+    )
+
+    assert len(legacy.samples) == len(generic.samples)
+    for legacy_sample, generic_sample in zip(
+        legacy.samples, generic.samples, strict=True
+    ):
+        assert legacy_sample.moon_altitude_deg == pytest.approx(
+            generic_sample.primary_altitude_deg
+        )
+        assert legacy_sample.moon_azimuth_deg == pytest.approx(
+            generic_sample.primary_azimuth_deg
+        )
+        assert legacy_sample.jupiter_altitude_deg == pytest.approx(
+            generic_sample.secondary_altitude_deg
+        )
+        assert legacy_sample.jupiter_azimuth_deg == pytest.approx(
+            generic_sample.secondary_azimuth_deg
+        )
+        assert legacy_sample.angular_separation_deg == pytest.approx(
+            generic_sample.angular_separation_deg
+        )
+
+
 def test_relationship_writers_use_stable_contract(tmp_path) -> None:
     assert hasattr(
         starskill, "write_relationship_csv"

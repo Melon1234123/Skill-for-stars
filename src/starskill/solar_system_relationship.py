@@ -1,4 +1,4 @@
-"""Calculate a reproducible Moon-Jupiter position relationship."""
+"""Calculate reproducible apparent relationships between astronomical targets."""
 
 import csv
 from collections.abc import Callable
@@ -12,6 +12,7 @@ from astropy.config.paths import set_temp_cache
 from astropy.coordinates import (
     AltAz,
     EarthLocation,
+    SkyCoord,
     get_body,
     solar_system_ephemeris,
 )
@@ -20,11 +21,18 @@ from astropy.utils import iers
 
 from starskill.ephemeris_calculator import build_time_grid
 from starskill.schemas import (
+    AstronomicalRelationshipResult,
+    AstronomicalRelationshipSample,
+    AstronomicalRelationshipSettings,
+    AstronomicalRelationshipTask,
+    ResolvedAstronomicalTarget,
     SolarSystemRelationshipResult,
     SolarSystemRelationshipSample,
     SolarSystemRelationshipSettings,
     SolarSystemRelationshipTask,
 )
+from starskill.target_references import resolve_target_ref
+from starskill.target_resolver import TargetBackend
 
 
 RELATIONSHIP_CSV_COLUMNS = (
@@ -37,26 +45,73 @@ RELATIONSHIP_CSV_COLUMNS = (
     "angular_separation_deg",
 )
 
+ASTRONOMICAL_RELATIONSHIP_CSV_COLUMNS = (
+    "timestamp_local",
+    "timestamp_utc",
+    "primary_altitude_deg",
+    "primary_azimuth_deg",
+    "primary_is_above_horizon",
+    "secondary_altitude_deg",
+    "secondary_azimuth_deg",
+    "secondary_is_above_horizon",
+    "angular_separation_deg",
+)
+
 
 def utc_now() -> datetime:
     return datetime.now(timezone.utc)
 
 
-def calculate_solar_system_relationship(
-    task: SolarSystemRelationshipTask,
+def _to_altaz(
+    target: ResolvedAstronomicalTarget,
     *,
+    times: Time,
+    location: EarthLocation,
+    frame: AltAz,
+) -> SkyCoord:
+    if target.motion == "dynamic":
+        assert target.kind == "solar_system"
+        return get_body(target.label.casefold(), times, location=location).transform_to(
+            frame
+        )
+
+    assert target.ra_deg is not None and target.dec_deg is not None
+    return SkyCoord(
+        ra=target.ra_deg * u.deg,
+        dec=target.dec_deg * u.deg,
+        frame="icrs",
+    ).transform_to(frame)
+
+
+def calculate_astronomical_relationship(
+    task: AstronomicalRelationshipTask,
+    *,
+    target_backend: TargetBackend | None = None,
+    cache_dir: Path | None = None,
     clock: Callable[[], datetime] = utc_now,
-) -> SolarSystemRelationshipResult:
-    """Calculate geometric Moon/Jupiter AltAz positions and separation."""
+) -> AstronomicalRelationshipResult:
+    """Calculate observer-specific geometric AltAz positions and separation."""
+    primary = resolve_target_ref(
+        task.primary,
+        backend=target_backend,
+        cache_dir=cache_dir,
+        clock=clock,
+    )
+    secondary = resolve_target_ref(
+        task.secondary,
+        backend=target_backend,
+        cache_dir=cache_dir,
+        clock=clock,
+    )
     points = build_time_grid(
         start=task.time_range.start,
         end=task.time_range.end,
         timezone_name=task.observer.timezone,
         interval_minutes=task.interval_minutes,
     )
-    with TemporaryDirectory(prefix="starskill-astropy-") as cache_dir:
+    with TemporaryDirectory(prefix="starskill-astropy-") as astropy_cache_dir:
         with (
-            set_temp_cache(cache_dir),
+            set_temp_cache(astropy_cache_dir),
             iers.conf.set_temp("auto_download", False),
             solar_system_ephemeris.set("builtin"),
         ):
@@ -71,30 +126,121 @@ def calculate_solar_system_relationship(
                 location=location,
                 pressure=0 * u.hPa,
             )
-            moon = get_body("moon", times, location=location).transform_to(frame)
-            jupiter = get_body("jupiter", times, location=location).transform_to(frame)
-            separation = moon.separation(jupiter)
+            primary_altaz = _to_altaz(
+                primary,
+                times=times,
+                location=location,
+                frame=frame,
+            )
+            secondary_altaz = _to_altaz(
+                secondary,
+                times=times,
+                location=location,
+                frame=frame,
+            )
+            separation = primary_altaz.separation(secondary_altaz)
 
     samples = [
-        SolarSystemRelationshipSample(
+        AstronomicalRelationshipSample(
             timestamp_local=point.local,
             timestamp_utc=point.utc,
-            moon_altitude_deg=float(moon.alt[index].to_value(u.deg)),
-            moon_azimuth_deg=float(moon.az[index].to_value(u.deg)),
-            jupiter_altitude_deg=float(jupiter.alt[index].to_value(u.deg)),
-            jupiter_azimuth_deg=float(jupiter.az[index].to_value(u.deg)),
+            primary_altitude_deg=float(
+                primary_altaz.alt[index].to_value(u.deg)
+            ),
+            primary_azimuth_deg=float(primary_altaz.az[index].to_value(u.deg)),
+            primary_is_above_horizon=bool(primary_altaz.alt[index] >= 0 * u.deg),
+            secondary_altitude_deg=float(
+                secondary_altaz.alt[index].to_value(u.deg)
+            ),
+            secondary_azimuth_deg=float(secondary_altaz.az[index].to_value(u.deg)),
+            secondary_is_above_horizon=bool(
+                secondary_altaz.alt[index] >= 0 * u.deg
+            ),
             angular_separation_deg=float(separation[index].to_value(u.deg)),
         )
         for index, point in enumerate(points)
     ]
-    return SolarSystemRelationshipResult(
+    return AstronomicalRelationshipResult(
         task=task,
-        settings=SolarSystemRelationshipSettings(
+        primary=primary,
+        secondary=secondary,
+        settings=AstronomicalRelationshipSettings(
             calculated_at=clock(),
             astropy_version=astropy.__version__,
         ),
         samples=samples,
     )
+
+
+def calculate_solar_system_relationship(
+    task: SolarSystemRelationshipTask,
+    *,
+    clock: Callable[[], datetime] = utc_now,
+) -> SolarSystemRelationshipResult:
+    """Adapt the generalized calculator to the legacy Moon/Jupiter contract."""
+    calculated_at = clock()
+    generic_task = AstronomicalRelationshipTask(
+        primary={"kind": "solar_system", "body": "moon"},
+        secondary={"kind": "solar_system", "body": "jupiter"},
+        observer=task.observer,
+        time_range=task.time_range,
+        interval_minutes=task.interval_minutes,
+    )
+    generic_result = calculate_astronomical_relationship(
+        generic_task,
+        clock=lambda: calculated_at,
+    )
+    samples = [
+        SolarSystemRelationshipSample(
+            timestamp_local=sample.timestamp_local,
+            timestamp_utc=sample.timestamp_utc,
+            moon_altitude_deg=sample.primary_altitude_deg,
+            moon_azimuth_deg=sample.primary_azimuth_deg,
+            jupiter_altitude_deg=sample.secondary_altitude_deg,
+            jupiter_azimuth_deg=sample.secondary_azimuth_deg,
+            angular_separation_deg=sample.angular_separation_deg,
+        )
+        for sample in generic_result.samples
+    ]
+    return SolarSystemRelationshipResult(
+        task=task,
+        settings=SolarSystemRelationshipSettings(
+            calculated_at=generic_result.settings.calculated_at,
+            astropy_version=generic_result.settings.astropy_version,
+        ),
+        samples=samples,
+    )
+
+
+def write_astronomical_relationship_csv(
+    result: AstronomicalRelationshipResult,
+    output_path: Path,
+) -> None:
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with output_path.open("w", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(
+            handle,
+            fieldnames=ASTRONOMICAL_RELATIONSHIP_CSV_COLUMNS,
+        )
+        writer.writeheader()
+        for sample in result.samples:
+            writer.writerow(
+                {
+                    "timestamp_local": sample.timestamp_local.isoformat(),
+                    "timestamp_utc": sample.timestamp_utc.isoformat(),
+                    "primary_altitude_deg": f"{sample.primary_altitude_deg:.3f}",
+                    "primary_azimuth_deg": f"{sample.primary_azimuth_deg:.3f}",
+                    "primary_is_above_horizon": str(
+                        sample.primary_is_above_horizon
+                    ),
+                    "secondary_altitude_deg": f"{sample.secondary_altitude_deg:.3f}",
+                    "secondary_azimuth_deg": f"{sample.secondary_azimuth_deg:.3f}",
+                    "secondary_is_above_horizon": str(
+                        sample.secondary_is_above_horizon
+                    ),
+                    "angular_separation_deg": f"{sample.angular_separation_deg:.3f}",
+                }
+            )
 
 
 def write_relationship_csv(
