@@ -40,7 +40,11 @@ class FailingSimbadBackend:
 
 
 class TableSimbadClient:
+    def __init__(self) -> None:
+        self.field_requests: list[tuple[str, ...]] = []
+
     def add_votable_fields(self, *fields: str) -> None:
+        self.field_requests.append(fields)
         self.fields = fields
 
     def query_object(self, query_name: str) -> Table:
@@ -63,15 +67,17 @@ class EmptyTableSimbadClient(TableSimbadClient):
         return Table(names=("main_id", "ra", "dec", "otype", "ids"))
 
 
-def test_simbad_backend_configures_votable_fields_only_before_query() -> None:
+def test_simbad_backend_configures_votable_fields_once_before_first_query() -> None:
     client = TableSimbadClient()
     backend = resolver.SimbadBackend(client=client)
 
     assert not hasattr(client, "fields")
 
     backend.query_object("M 42")
+    backend.query_object("M 42")
 
     assert client.fields == ("otype", "ids")
+    assert client.field_requests == [("otype", "ids")]
 
 
 def test_resolved_target_preserves_coordinates_and_provenance() -> None:
