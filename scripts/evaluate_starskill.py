@@ -30,6 +30,12 @@ from starskill.evaluation.reporting import (
     write_aggregate_reports,
     write_case_reports,
 )
+from starskill.evaluation.persona_cli import (
+    add_export_datasets_arguments,
+    add_generate_arguments,
+    run_export_datasets,
+    run_generate,
+)
 from starskill.evaluation.runner import ExecutionError, execute_case
 from starskill.evaluation.scoring import aggregate_scores, score_case
 from tests.fixtures.evaluation.replay_fixtures import (
@@ -74,6 +80,16 @@ def main(argv: Sequence[str] | None = None) -> int:
     acceptance_parser.add_argument("--output-dir", type=Path, required=True)
     acceptance_parser.add_argument("--python-executable", type=Path, default=Path(sys.executable))
 
+    generate_parser = commands.add_parser(
+        "generate", help="generate deterministic persona evaluation tasks"
+    )
+    add_generate_arguments(generate_parser)
+
+    export_datasets_parser = commands.add_parser(
+        "export-datasets", help="export validated self-play traces as post-training-ready JSONL"
+    )
+    add_export_datasets_arguments(export_datasets_parser)
+
     args = parser.parse_args(argv)
 
     try:
@@ -83,6 +99,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             return _replay(args)
         if args.command == "acceptance":
             return _acceptance(args)
+        if args.command == "generate":
+            return run_generate(args)
+        if args.command == "export-datasets":
+            return run_export_datasets(args)
         return _aggregate(args)
     except ExecutionError as exc:
         _print_error("execution_error", str(exc))

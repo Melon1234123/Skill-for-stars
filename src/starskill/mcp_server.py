@@ -26,6 +26,15 @@ from starskill.public_data_fetcher import (
     fetch_sdss_image,
     write_public_image_metadata,
 )
+from starskill.query import (
+    CatalogQueryRequest,
+    ConeSearchRequest,
+    QueryResult,
+    TableDescriptionRequest,
+    TapQueryRequest,
+    VOQueryClient,
+)
+from starskill.query.errors import VOQueryError
 from starskill.recommendations import recommend_tonight
 from starskill.schemas import (
     AstronomicalRelationshipTask,
@@ -79,6 +88,10 @@ RUN_RESOURCE_PATHS = {
     "recommendation": "recommendation.json",
     "nasa-feature": "nasa_feature.json",
     "stellarium-sync": "stellarium_sync.json",
+    "query-request": "request.json",
+    "query-adql": "query.adql",
+    "query-result": "result.ecsv",
+    "query-provenance": "provenance.json",
 }
 
 _NASA_DATE = TypeAdapter(str | None)
@@ -133,6 +146,7 @@ class StarSkillMcpService:
         ) = None,
         nasa_provider_factory: Callable[[], NasaApodProvider] | None = None,
         stellarium_bridge_factory: Callable[[], StellariumBridge] | None = None,
+        vo_query_client_factory: Callable[[], VOQueryClient] | None = None,
     ) -> None:
         self.runs_root = runs_root.resolve()
         self.target_cache_dir = target_cache_dir.resolve()
@@ -165,6 +179,9 @@ class StarSkillMcpService:
             )
         )
         self.stellarium_bridge_factory = stellarium_bridge_factory or StellariumBridge
+        self.vo_query_client_factory = vo_query_client_factory or (
+            lambda: VOQueryClient(clock=self.clock)
+        )
 
     def validate_observation_task(self, task: dict[str, Any]) -> dict[str, Any]:
         try:
@@ -438,6 +455,22 @@ class StarSkillMcpService:
         self._write_model(output_dir / "stellarium_sync.json", result)
         return self._model_result(run_id, result)
 
+    def astronomy_describe_table(self, request: TableDescriptionRequest) -> dict[str, Any]:
+        """Describe one allowlisted TAP table in a server-owned run directory."""
+        return self._run_vo_query("vo-describe", request, "describe_table")
+
+    def astronomy_cone_search(self, request: ConeSearchRequest) -> dict[str, Any]:
+        """Run one structured cone search through the VO service allowlist."""
+        return self._run_vo_query("vo-cone", request, "cone_search")
+
+    def astronomy_catalog_query(self, request: CatalogQueryRequest) -> dict[str, Any]:
+        """Run one structured catalog query through the VO service allowlist."""
+        return self._run_vo_query("vo-catalog", request, "catalog_query")
+
+    def astronomy_tap_query(self, request: TapQueryRequest) -> dict[str, Any]:
+        """Run one bounded read-only ADQL query through the VO service allowlist."""
+        return self._run_vo_query("vo-tap", request, "tap_query")
+
     def read_run_resource(self, run_id: str, resource: str) -> str:
         if not RUN_ID_PATTERN.fullmatch(run_id):
             raise ValueError("run_id is invalid")
@@ -465,6 +498,50 @@ class StarSkillMcpService:
             if (run_dir / relative_path).is_file():
                 resources[name] = f"starskill://runs/{run_id}/{name}"
         return resources
+
+    def _run_vo_query(
+        self,
+        workflow: str,
+        request: (
+            TableDescriptionRequest
+            | ConeSearchRequest
+            | CatalogQueryRequest
+            | TapQueryRequest
+        ),
+        operation: Literal[
+            "describe_table", "cone_search", "catalog_query", "tap_query"
+        ],
+    ) -> dict[str, Any]:
+        run_id, output_dir = self._new_run(workflow)
+        client = self.vo_query_client_factory()
+        try:
+            result = getattr(client, operation)(request, output_dir=output_dir)
+        except VOQueryError as exc:
+            return {
+                "ok": False,
+                "status": "failed",
+                "service": request.service,
+                "row_count": 0,
+                "run_id": run_id,
+                "resources": self._resources_for_run(run_id),
+                "provenance": {
+                    "status": "failed",
+                    "failure": {"code": exc.code, "message": str(exc)},
+                },
+            }
+        return self._vo_query_result(run_id, result)
+
+    def _vo_query_result(self, run_id: str, result: QueryResult) -> dict[str, Any]:
+        """Expose only auditable query summary fields and allowlisted resources."""
+        return {
+            "ok": result.ok,
+            "status": result.status,
+            "service": result.service,
+            "row_count": result.row_count,
+            "run_id": run_id,
+            "resources": self._resources_for_run(run_id),
+            "provenance": result.provenance.model_dump(mode="json"),
+        }
 
     def _weather_forecast(
         self, request: ObservingConditionsRequest
@@ -630,6 +707,26 @@ def build_mcp_server(service: StarSkillMcpService | None = None) -> FastMCP:
     def sync_stellarium(request: dict[str, Any]) -> dict[str, Any]:
         """Synchronize a validated request with local Stellarium RemoteControl only."""
         return service.sync_stellarium(request)
+
+    @server.tool(structured_output=True)
+    def astronomy_describe_table(request: TableDescriptionRequest) -> dict[str, Any]:
+        """Describe one table from an allowlisted IVOA TAP service."""
+        return service.astronomy_describe_table(request)
+
+    @server.tool(structured_output=True)
+    def astronomy_cone_search(request: ConeSearchRequest) -> dict[str, Any]:
+        """Run a structured ICRS cone search against an allowlisted TAP service."""
+        return service.astronomy_cone_search(request)
+
+    @server.tool(structured_output=True)
+    def astronomy_catalog_query(request: CatalogQueryRequest) -> dict[str, Any]:
+        """Run a structured bounded catalog query against an allowlisted TAP service."""
+        return service.astronomy_catalog_query(request)
+
+    @server.tool(structured_output=True)
+    def astronomy_tap_query(request: TapQueryRequest) -> dict[str, Any]:
+        """Run bounded read-only ADQL against an allowlisted TAP service."""
+        return service.astronomy_tap_query(request)
 
     @server.resource(
         "starskill://runs/{run_id}/{resource}",

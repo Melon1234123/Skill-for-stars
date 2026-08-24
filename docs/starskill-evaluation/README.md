@@ -10,7 +10,10 @@ This folder is the consolidated, user-facing documentation for the StarSkill ast
 
 ## Runtime boundary
 
-The executable evaluation implementation remains in `src/starskill/evaluation/` and `scripts/evaluate_starskill.py`. Canonical cases, Worker/Reviewer prompts, and report guidance remain in `evaluation/`. They stay at their current paths because the CLI and tests use those paths as part of their contract.
+可执行评测实现仍位于 `src/starskill/evaluation/` 和 `scripts/evaluate_starskill.py`。固定案例、
+Worker/Reviewer 提示词和报告指南仍位于 `evaluation/`，因为 CLI 和测试将这些路径视为契约。
+Phase 3 的 persona 任务生成和 Phase 4 的 provider-neutral self-play 数据导出也复用该实现，
+详细用法见 [`../persona-evaluation.md`](../persona-evaluation.md)。
 
 The internal SDD progress ledger and per-task working artifacts remain in `.superpowers/sdd/`; they are process records rather than product documentation.
 

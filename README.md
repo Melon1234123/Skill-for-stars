@@ -30,6 +30,9 @@ StarSkill 是一个可安装、可复现、可审计的天文实训工具包。�
 - `run`：串联输入校验、目标解析、星历计算、观测规划、制图、报告和复核清单，生成完整审计包。
 - `relationship`：Relationship v2 可计算太阳系天体、SIMBAD 名称和直接 ICRS 坐标之间的表观天空位置关系，并兼容原有月亮-木星输入。
 - `fetch-image`：从 SDSS DR18 获取受大小、超时、MIME、JPEG 和尺寸校验约束的 M51 图像，并保留来源和处理元数据。
+- `VO Query Core`：以 IVOA TAP、ADQL、PyVO 和 Astropy Table 对允许列表中的 SIMBAD、VizieR、Gaia 服务进行可审计查询；每次查询保留请求、最终 ADQL、ECSV 结果和 provenance，并通过受限 MCP 工具调用。
+- `Persona 评测生成`：在既有评测框架内，按固定随机种子生成 student、teacher、outreach、amateur observer、undergraduate researcher、researcher、reviewer 的离线任务集，覆盖观测、目录查询、圆锥查询、交叉匹配、歧义输入、服务失败和科学对抗场景。
+- `Self-play 数据闭环`：通过外部 harness 注入的 `AgentProvider` 捕获 prompt、回答、工具调用、评分、满意度和产物，导出 regression、successful traces、preferences 三类 JSONL 数据；仓库不调用 LLM API，也不执行模型微调。
 - 评测工具：提供 Worker/Reviewer 提示词、案例清单、真实运行证据回放、机器检查和分项评分。
 
 ## 三个可复现案例
@@ -160,6 +163,9 @@ python -m starskill fetch-image examples/m51_sdss_image.json \
 ```
 
 所有命令的参数、产物和退出码见 [`skills/run-starskill/references/cli-contract.md`](skills/run-starskill/references/cli-contract.md)。错误以结构化 JSON 写入 stderr，外部服务失败不能被伪造为成功。
+
+IVOA 查询核心的服务允许列表、Python 接口、ADQL 边界和证据产物见 [`docs/vo-query-core.md`](docs/vo-query-core.md)。
+Persona 定义、任务族和确定性任务生成命令见 [`docs/persona-evaluation.md`](docs/persona-evaluation.md)。
 
 ## AI Agent Skill
 

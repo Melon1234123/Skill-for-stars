@@ -96,6 +96,10 @@ degradation result, not a CI failure.
 | `recommend_tonight` | Run geometry first, then combine it with weather and static light-pollution evidence. |
 | `get_nasa_feature` | Fetch NASA APOD metadata and provenance for an optional ISO date. |
 | `sync_stellarium` | Synchronize a validated target, time, and observer with local Stellarium RemoteControl. |
+| `astronomy_describe_table` | Read `TAP_SCHEMA.columns` for a table at an allowlisted IVOA TAP service. |
+| `astronomy_cone_search` | Run a typed ICRS cone search at an allowlisted IVOA TAP service. |
+| `astronomy_catalog_query` | Run a typed, bounded catalog query at an allowlisted IVOA TAP service. |
+| `astronomy_tap_query` | Run bounded read-only ADQL at an allowlisted IVOA TAP service. |
 
 `plan_observation`, `calculate_moon_jupiter_relationship`, and
 `fetch_m51_sdss_image`, and every outreach tool create a unique server-owned
@@ -111,6 +115,12 @@ The resource template exposes only a fixed allowlist of text artifacts:
 `manifest`, `result`, `report`, `review-checklist`, `target`, `ephemeris`,
 `visibility`, `relationship`, `relationship-table`, `image-metadata`,
 `conditions`, `recommendation`, `nasa-feature`, and `stellarium-sync`.
+
+The VO tools accept only a packaged service ID (`simbad`, `vizier`, or `gaia`),
+never an endpoint. They expose only the fixed query resources `query-request`,
+`query-adql`, `query-result`, and `query-provenance`. Each response includes
+`ok`, `status`, `service`, `row_count`, `resources`, and `provenance`; a
+network or TAP failure remains a structured failed response with evidence.
 
 ## Scientific Boundaries
 
