@@ -19,12 +19,17 @@ from astropy.coordinates import (
 from astropy.time import Time
 from astropy.utils import iers
 
-from starskill.ephemeris_calculator import build_time_grid
+from starskill.ephemeris_calculator import TimePoint, build_time_grid
+from starskill.external_data import JsonBackend
+from starskill.horizons import resolve_horizons_target
 from starskill.schemas import (
     AstronomicalRelationshipResult,
     AstronomicalRelationshipSample,
     AstronomicalRelationshipSettings,
     AstronomicalRelationshipTask,
+    HorizonsTargetRef,
+    Observer,
+    RelationshipTargetRef,
     ResolvedAstronomicalTarget,
     SolarSystemRelationshipResult,
     SolarSystemRelationshipSample,
@@ -65,10 +70,19 @@ def utc_now() -> datetime:
 def _to_altaz(
     target: ResolvedAstronomicalTarget,
     *,
+    horizons_positions: list[tuple[float, float]] | None,
     times: Time,
     location: EarthLocation,
     frame: AltAz,
 ) -> SkyCoord:
+    if target.kind == "horizons":
+        assert horizons_positions is not None
+        return SkyCoord(
+            az=[azimuth for azimuth, _ in horizons_positions] * u.deg,
+            alt=[altitude for _, altitude in horizons_positions] * u.deg,
+            frame=frame,
+        )
+
     if target.motion == "dynamic":
         assert target.kind == "solar_system"
         return get_body(target.label.casefold(), times, location=location).transform_to(
@@ -83,31 +97,67 @@ def _to_altaz(
     ).transform_to(frame)
 
 
+def _resolve_relationship_target(
+    target: RelationshipTargetRef,
+    *,
+    points: list[TimePoint],
+    observer: Observer,
+    target_backend: TargetBackend | None,
+    horizons_backend: JsonBackend | None,
+    cache_dir: Path | None,
+    clock: Callable[[], datetime],
+) -> tuple[ResolvedAstronomicalTarget, list[tuple[float, float]] | None]:
+    """Resolve one relationship target, sampling Horizons refs at every step."""
+    if isinstance(target, HorizonsTargetRef):
+        return resolve_horizons_target(
+            target,
+            utc_times=[point.utc for point in points],
+            observer=observer,
+            backend=horizons_backend,
+            cache_dir=cache_dir,
+            clock=clock,
+        )
+    resolved = resolve_target_ref(
+        target,
+        backend=target_backend,
+        cache_dir=cache_dir,
+        clock=clock,
+    )
+    return resolved, None
+
+
 def calculate_astronomical_relationship(
     task: AstronomicalRelationshipTask,
     *,
     target_backend: TargetBackend | None = None,
+    horizons_backend: JsonBackend | None = None,
     cache_dir: Path | None = None,
     clock: Callable[[], datetime] = utc_now,
 ) -> AstronomicalRelationshipResult:
     """Calculate observer-specific geometric AltAz positions and separation."""
-    primary = resolve_target_ref(
-        task.primary,
-        backend=target_backend,
-        cache_dir=cache_dir,
-        clock=clock,
-    )
-    secondary = resolve_target_ref(
-        task.secondary,
-        backend=target_backend,
-        cache_dir=cache_dir,
-        clock=clock,
-    )
     points = build_time_grid(
         start=task.time_range.start,
         end=task.time_range.end,
         timezone_name=task.observer.timezone,
         interval_minutes=task.interval_minutes,
+    )
+    primary, primary_positions = _resolve_relationship_target(
+        task.primary,
+        points=points,
+        observer=task.observer,
+        target_backend=target_backend,
+        horizons_backend=horizons_backend,
+        cache_dir=cache_dir,
+        clock=clock,
+    )
+    secondary, secondary_positions = _resolve_relationship_target(
+        task.secondary,
+        points=points,
+        observer=task.observer,
+        target_backend=target_backend,
+        horizons_backend=horizons_backend,
+        cache_dir=cache_dir,
+        clock=clock,
     )
     with TemporaryDirectory(prefix="starskill-astropy-") as astropy_cache_dir:
         with (
@@ -128,12 +178,14 @@ def calculate_astronomical_relationship(
             )
             primary_altaz = _to_altaz(
                 primary,
+                horizons_positions=primary_positions,
                 times=times,
                 location=location,
                 frame=frame,
             )
             secondary_altaz = _to_altaz(
                 secondary,
+                horizons_positions=secondary_positions,
                 times=times,
                 location=location,
                 frame=frame,

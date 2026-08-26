@@ -10,7 +10,7 @@ Use the repository CLI to produce traceable astronomy-training artifacts. Preser
 ## Select the Workflow
 
 - Use `run` for a complete single-target observation bundle such as the Beijing M42 case.
-- Use `relationship` for apparent positional relationships between supported solar-system, SIMBAD, or direct-coordinate targets.
+- Use `relationship` for apparent positional relationships between supported solar-system, SIMBAD, direct-coordinate, or opt-in JPL Horizons minor-body targets.
 - Use `fetch-image` for the bounded SDSS DR18 M51 cutout workflow.
 - Use `sky-chart` only when the user requests a local visual sky chart.
 - Use `validate`, `resolve`, `ephemeris`, or `plan` when the user explicitly requests only that stage.
@@ -42,7 +42,9 @@ Run the selected command and capture its exit code and structured stdout or stde
 
 Do not substitute fabricated coordinates, images, source metadata, or success reports when a service fails. A cache hit is acceptable only when the CLI validates the cached record.
 
-Relationship v2 treats solar-system targets as dynamic apparent positions and resolves them again at every sample time. SIMBAD and direct-coordinate targets are fixed ICRS positions. Report angular separation as an apparent sky angle, never as physical distance. An unsupported solar-system name must remain the structured `unsupported_solar_system_body` failure; do not retry it as a SIMBAD name. The legacy Moon-Jupiter `solar_system_relationship` task remains supported with its v1 artifacts.
+Relationship v2 treats solar-system targets as dynamic apparent positions and resolves them again at every sample time. SIMBAD and direct-coordinate targets are fixed ICRS positions. Report angular separation as an apparent sky angle, never as physical distance. An unsupported solar-system name must remain the structured `unsupported_solar_system_body` failure; do not retry it as a SIMBAD name or silently rewrite it as a `horizons` target. The legacy Moon-Jupiter `solar_system_relationship` task remains supported with its v1 artifacts.
+
+Comets, asteroids, and other minor bodies require the explicit opt-in `horizons` target kind, which queries the JPL Horizons API and samples apparent positions at every relationship time step. Use it only when the user asks for a body outside the nine built-in ones, tell the user the run queries JPL Horizons unless a validated cache entry keeps it offline, and preserve the recorded `horizons_query` provenance (endpoint, query parameters, access time, cache state) in the metadata. Report its structured failures (`horizons_body_not_found`, `horizons_ambiguous_body`, `horizons_service_error`, `horizons_invalid_response`) exactly; never substitute positions from another source.
 
 For a local visual chart, run `.venv/bin/starskill sky-chart --open` after prerequisites are installed, or report the manual loopback URL when the user does not want a browser opened. Render the requested parameters, then save the paired PNG and JSON from the render response into a fresh output directory while the loopback server is still running. Do not treat opening the page or reporting a loopback URL as delivery of the chart. Do not run a full-catalog download on the user's behalf: require the human user to run `.venv/bin/starskill sky-chart --download-catalog` themselves when they want full density. Keep the ordinary chart offline; that explicit download is the only chart operation that accesses the fixed, verified HYG source.
 

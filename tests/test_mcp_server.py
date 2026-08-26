@@ -245,6 +245,45 @@ def test_mcp_generic_relationship_publishes_only_run_resources(tmp_path: Path) -
     assert metadata["settings"]["schema_version"] == "2.0"
 
 
+def test_mcp_generic_relationship_uses_injected_horizons_backend(
+    tmp_path: Path,
+) -> None:
+    class StaticHorizonsBackend:
+        def fetch_json(
+            self, url: str, *, timeout_seconds: int, max_bytes: int
+        ) -> dict[str, object]:
+            return {
+                "result": (
+                    "Target body name: 1 Ceres (A801 AA)   {source: JPL#48}\n"
+                    "$$SOE\n"
+                    " 2026-Jan-10 10:00, , , 123.4567, 45.6789,\n"
+                    " 2026-Jan-10 10:20, , , 124.9876, 44.3210,\n"
+                    "$$EOE\n"
+                ),
+                "signature": {"source": "NASA/JPL Horizons API", "version": "1.2"},
+            }
+
+    service = StarSkillMcpService(
+        runs_root=tmp_path / "runs",
+        target_cache_dir=tmp_path / "target-cache",
+        image_cache_dir=tmp_path / "image-cache",
+        horizons_backend_factory=StaticHorizonsBackend,
+        clock=lambda: datetime(2026, 7, 23, 8, 0, tzinfo=timezone.utc),
+    )
+    task = generic_coordinate_task()
+    task["primary"] = {"kind": "horizons", "body": "1 Ceres"}
+
+    result = service.calculate_astronomical_relationship(task)
+
+    assert result["ok"] is True
+    metadata = json.loads(service.read_run_resource(result["run_id"], "relationship"))
+    assert metadata["primary"]["kind"] == "horizons"
+    assert metadata["primary"]["source"]["provider"] == "jpl_horizons"
+    assert metadata["primary"]["horizons_query"]["endpoint"] == (
+        "https://ssd.jpl.nasa.gov/api/horizons.api"
+    )
+
+
 def test_mcp_generic_target_resolution_is_pure_for_coordinates(tmp_path: Path) -> None:
     service = StarSkillMcpService(
         runs_root=tmp_path / "runs",

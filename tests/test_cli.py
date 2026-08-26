@@ -847,6 +847,143 @@ def test_relationship_cli_accepts_generic_coordinate_pair(
     assert "moon_altitude_deg" not in columns
 
 
+class CliHorizonsBackend:
+    payload: dict[str, object] = {}
+    calls: list[str] = []
+
+    def fetch_json(
+        self,
+        url: str,
+        *,
+        timeout_seconds: int,
+        max_bytes: int,
+    ) -> dict[str, object]:
+        type(self).calls.append(url)
+        return type(self).payload
+
+
+def horizons_relationship_task() -> dict[str, object]:
+    return {
+        **coordinate_relationship_task(),
+        "primary": {"kind": "horizons", "body": "1 Ceres"},
+    }
+
+
+def test_relationship_cli_samples_opt_in_horizons_body(
+    tmp_path: Path, capsys, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    assert hasattr(cli, "UrlJsonBackend"), "CLI horizons backend is missing"
+    CliHorizonsBackend.calls = []
+    CliHorizonsBackend.payload = {
+        "result": (
+            "Target body name: 1 Ceres (A801 AA)   {source: JPL#48}\n"
+            "$$SOE\n"
+            " 2026-Jan-10 10:00, , , 123.4567, 45.6789,\n"
+            " 2026-Jan-10 10:20, , , 124.9876, 44.3210,\n"
+            "$$EOE\n"
+        ),
+        "signature": {"source": "NASA/JPL Horizons API", "version": "1.2"},
+    }
+    monkeypatch.setattr(cli, "UrlJsonBackend", CliHorizonsBackend)
+    input_path = write_json(tmp_path / "task.json", horizons_relationship_task())
+    csv_path = tmp_path / "relationship.csv"
+    metadata_path = tmp_path / "relationship.json"
+
+    exit_code = main(
+        [
+            "relationship",
+            str(input_path),
+            "--output",
+            str(csv_path),
+            "--metadata",
+            str(metadata_path),
+            "--cache-dir",
+            str(tmp_path / "cache"),
+        ]
+    )
+
+    summary = json.loads(capsys.readouterr().out)
+    metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    assert exit_code == 0
+    assert summary["sample_count"] == 2
+    assert metadata["primary"]["kind"] == "horizons"
+    assert metadata["primary"]["label"] == "1 Ceres (A801 AA)"
+    assert metadata["primary"]["source"]["provider"] == "jpl_horizons"
+    query = metadata["primary"]["horizons_query"]
+    assert query["endpoint"] == "https://ssd.jpl.nasa.gov/api/horizons.api"
+    assert query["from_cache"] is False
+    assert query["query_parameters"]["COMMAND"] == "'1 ceres;'"
+    assert len(CliHorizonsBackend.calls) == 1
+    assert CliHorizonsBackend.calls[0].startswith(
+        "https://ssd.jpl.nasa.gov/api/horizons.api?"
+    )
+    assert (
+        metadata["samples"][0]["primary_azimuth_deg"] == pytest.approx(123.4567)
+    )
+
+
+def test_relationship_cli_maps_unknown_horizons_body_to_not_found(
+    tmp_path: Path, capsys, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    CliHorizonsBackend.calls = []
+    CliHorizonsBackend.payload = {
+        "result": "No matches found.",
+        "signature": {"version": "1.2"},
+    }
+    monkeypatch.setattr(cli, "UrlJsonBackend", CliHorizonsBackend)
+    input_path = write_json(tmp_path / "task.json", horizons_relationship_task())
+    csv_path = tmp_path / "relationship.csv"
+    metadata_path = tmp_path / "relationship.json"
+
+    exit_code = main(
+        [
+            "relationship",
+            str(input_path),
+            "--output",
+            str(csv_path),
+            "--metadata",
+            str(metadata_path),
+        ]
+    )
+
+    output = json.loads(capsys.readouterr().err)
+    assert exit_code == 3
+    assert output["resolved"] is False
+    assert output["error"] == "horizons_body_not_found"
+    assert not csv_path.exists()
+    assert not metadata_path.exists()
+
+
+def test_relationship_cli_keeps_unsupported_solar_system_bodies_offline(
+    tmp_path: Path, capsys, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    CliHorizonsBackend.calls = []
+    monkeypatch.setattr(cli, "UrlJsonBackend", CliHorizonsBackend)
+    input_path = write_json(
+        tmp_path / "task.json",
+        {
+            **coordinate_relationship_task(),
+            "primary": {"kind": "solar_system", "body": "ceres"},
+        },
+    )
+
+    exit_code = main(
+        [
+            "relationship",
+            str(input_path),
+            "--output",
+            str(tmp_path / "relationship.csv"),
+            "--metadata",
+            str(tmp_path / "relationship.json"),
+        ]
+    )
+
+    output = json.loads(capsys.readouterr().err)
+    assert exit_code == 2
+    assert output["error"] == "unsupported_solar_system_body"
+    assert CliHorizonsBackend.calls == []
+
+
 @pytest.mark.parametrize(
     ("filename", "primary_kind", "secondary_kind"),
     [
@@ -854,6 +991,7 @@ def test_relationship_cli_accepts_generic_coordinate_pair(
         ("mars_m31.json", "solar_system", "simbad"),
         ("m31_coordinates.json", "simbad", "coordinates"),
         ("coordinates_coordinates.json", "coordinates", "coordinates"),
+        ("ceres_coordinates.json", "horizons", "coordinates"),
     ],
 )
 def test_fixed_v2_relationship_examples_validate(

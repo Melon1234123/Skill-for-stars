@@ -60,9 +60,37 @@ This command may query SIMBAD unless a validated target cache entry is available
 .venv/bin/python -m starskill relationship <task.json> --output <relationship.csv> --metadata <relationship.json> [--cache-dir <directory>]
 ```
 
-Relationship v2 uses `task_type: astronomical_relationship` with `primary` and `secondary` typed target references. Supported kinds are `solar_system` (`body`), `simbad` (`name`), and `coordinates` (`label`, `ra_deg`, `dec_deg`). Solar-system targets are dynamic apparent positions calculated at every sample through Astropy's built-in ephemeris. SIMBAD and direct-coordinate targets are fixed ICRS positions; SIMBAD may query the service unless a validated cache entry exists, while direct coordinates remain offline.
+Relationship v2 uses `task_type: astronomical_relationship` with `primary` and `secondary` typed target references. Supported kinds are `solar_system` (`body`), `simbad` (`name`), `coordinates` (`label`, `ra_deg`, `dec_deg`), and the opt-in `horizons` (`body`) described below. Solar-system targets are dynamic apparent positions calculated at every sample through Astropy's built-in ephemeris. SIMBAD and direct-coordinate targets are fixed ICRS positions; SIMBAD may query the service unless a validated cache entry exists, while direct coordinates remain offline.
 
-The CSV contains generic primary/secondary AltAz fields, horizon flags, and `angular_separation_deg`; metadata uses `settings.schema_version: "2.0"` and records resolved target motion and provenance. Angular separation is an apparent angle on the observer's sky, not physical distance. Supported built-in bodies are Sun, Moon, Mercury, Venus, Mars, Jupiter, Saturn, Uranus, and Neptune. Any other `solar_system` body exits `2` with structured `error: "unsupported_solar_system_body"`; it never falls back to SIMBAD.
+The CSV contains generic primary/secondary AltAz fields, horizon flags, and `angular_separation_deg`; metadata uses `settings.schema_version: "2.0"` and records resolved target motion and provenance. Angular separation is an apparent angle on the observer's sky, not physical distance. Supported built-in bodies are Sun, Moon, Mercury, Venus, Mars, Jupiter, Saturn, Uranus, and Neptune. Any other `solar_system` body exits `2` with structured `error: "unsupported_solar_system_body"`; it never falls back to SIMBAD or JPL Horizons.
+
+### Opt-in JPL Horizons minor bodies
+
+Comets, asteroids, and other minor bodies are available only through the
+explicit relationship target kind `horizons` (`body`). Choosing that kind is
+the network opt-in: the command then queries the JPL Horizons API
+(`https://ssd.jpl.nasa.gov/api/horizons.api`) once per target with a
+small-body lookup, sampling apparent airless azimuth and elevation at every
+relationship time step. `horizons` targets are valid only inside
+`relationship` tasks; `validate` accepts them, while `resolve-target`,
+`ephemeris`, and `run` do not.
+
+Metadata records the resolved target with `source.provider: "jpl_horizons"`
+and a `horizons_query` object holding the endpoint, the exact query
+parameters, `accessed_at`, and `from_cache`. The query enforces a 30-second
+timeout and a 2,000,000-byte response limit, and successful responses are
+cached under `<cache-dir>/horizons` for 24 hours; a validated unexpired cache
+entry keeps a repeated query offline and is reported with
+`from_cache: true`.
+
+Failures stay structured and never produce invented positions: an unknown
+body exits `3` with `horizons_body_not_found`, an ambiguous designation exits
+`2` with `horizons_ambiguous_body` (retry with a unique designation such as
+`1 Ceres` or `1P/Halley`), and a service, network, or malformed-response
+failure exits `4` with `horizons_service_error` or
+`horizons_invalid_response`. The offline default above is unchanged: an
+unsupported `solar_system` body is never retried through Horizons
+automatically.
 
 Legacy compatibility is retained: `task_type: solar_system_relationship` still requires `targets: ["moon", "jupiter"]` and writes the existing v1 Moon/Jupiter CSV and JSON fields.
 
@@ -91,7 +119,7 @@ Expected files: `data/m51_sdss.jpg`, `figures/m51_display.png`, and `image_metad
 | 0 | Successful command |
 | 2 | Input, target-name, or threshold validation failure |
 | 3 | Target not found |
-| 4 | SIMBAD service failure |
+| 4 | SIMBAD or JPL Horizons service failure |
 | 5 | Complete run degraded because a non-data artifact such as plotting failed |
 | 6 | Public image not found or no data |
 | 7 | Public data service failure |

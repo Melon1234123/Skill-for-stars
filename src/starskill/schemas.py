@@ -271,8 +271,28 @@ class CoordinateTargetRef(InputModel):
     dec_deg: float = Field(ge=-90, le=90, allow_inf_nan=False)
 
 
+class HorizonsTargetRef(InputModel):
+    """Opt-in JPL Horizons small-body reference for relationship tasks only."""
+
+    kind: Literal["horizons"]
+    body: str
+
+    @field_validator("body")
+    @classmethod
+    def normalize_body(cls, value: str) -> str:
+        body = " ".join(value.split()).casefold()
+        if not body or len(body) > 64 or not re.fullmatch(r"[a-z0-9][a-z0-9 ./-]*", body):
+            raise ValueError("horizons body must be a safe non-empty designation")
+        return body
+
+
 TargetRef = Annotated[
     SolarSystemTargetRef | SimbadTargetRef | CoordinateTargetRef,
+    Field(discriminator="kind"),
+]
+
+RelationshipTargetRef = Annotated[
+    SolarSystemTargetRef | SimbadTargetRef | CoordinateTargetRef | HorizonsTargetRef,
     Field(discriminator="kind"),
 ]
 
@@ -471,8 +491,8 @@ class ImageSearchResult(ImageContractModel):
 
 class AstronomicalRelationshipTask(InputModel):
     task_type: Literal["astronomical_relationship"] = "astronomical_relationship"
-    primary: TargetRef
-    secondary: TargetRef
+    primary: RelationshipTargetRef
+    secondary: RelationshipTargetRef
     observer: Observer
     time_range: TimeRange
     interval_minutes: int = Field(default=20, ge=1, le=120)
@@ -484,14 +504,24 @@ class AstronomicalTargetSource(InputModel):
     accessed_at: datetime
 
 
+class HorizonsQueryRecord(InputModel):
+    """Replayable provenance for one JPL Horizons ephemeris query."""
+
+    endpoint: str
+    query_parameters: dict[str, str]
+    accessed_at: datetime
+    from_cache: bool
+
+
 class ResolvedAstronomicalTarget(InputModel):
     label: str
-    kind: Literal["solar_system", "simbad", "coordinates"]
+    kind: Literal["solar_system", "simbad", "coordinates", "horizons"]
     motion: Literal["dynamic", "fixed_icrs"]
     ra_deg: float | None = Field(default=None, ge=0, lt=360, allow_inf_nan=False)
     dec_deg: float | None = Field(default=None, ge=-90, le=90, allow_inf_nan=False)
     source: AstronomicalTargetSource
     catalog_target: ResolvedTarget | None = None
+    horizons_query: HorizonsQueryRecord | None = None
 
     @property
     def canonical_name(self) -> str:
@@ -500,11 +530,13 @@ class ResolvedAstronomicalTarget(InputModel):
 
     @model_validator(mode="after")
     def motion_must_match_kind_and_coordinates(self) -> "ResolvedAstronomicalTarget":
-        if self.kind == "solar_system":
+        if (self.horizons_query is not None) != (self.kind == "horizons"):
+            raise ValueError("horizons_query is required for horizons targets and forbidden otherwise")
+        if self.kind in ("solar_system", "horizons"):
             if self.motion != "dynamic":
-                raise ValueError("solar_system targets must use dynamic motion")
+                raise ValueError(f"{self.kind} targets must use dynamic motion")
             if self.ra_deg is not None or self.dec_deg is not None:
-                raise ValueError("dynamic solar_system targets must not have fixed ICRS coordinates")
+                raise ValueError(f"dynamic {self.kind} targets must not have fixed ICRS coordinates")
             return self
 
         if self.motion != "fixed_icrs":

@@ -20,6 +20,7 @@ from starskill.observation_planner import (
     write_observation_plan_json,
     write_visibility_csv,
 )
+from starskill.external_data import UrlJsonBackend
 from starskill.pipeline import run_pipeline
 from starskill.public_data_fetcher import (
     PublicDataError,
@@ -424,14 +425,18 @@ def main(argv: Sequence[str] | None = None) -> int:
             result = calculate_solar_system_relationship(relationship_task)
             write_relationship_csv(result, args.output)
         else:
+            target_kinds = {
+                relationship_task.primary.kind,
+                relationship_task.secondary.kind,
+            }
             try:
                 result = calculate_astronomical_relationship(
                     relationship_task,
                     target_backend=(
-                        SimbadBackend()
-                        if "simbad"
-                        in {relationship_task.primary.kind, relationship_task.secondary.kind}
-                        else None
+                        SimbadBackend() if "simbad" in target_kinds else None
+                    ),
+                    horizons_backend=(
+                        UrlJsonBackend() if "horizons" in target_kinds else None
                     ),
                     cache_dir=args.cache_dir,
                 )
