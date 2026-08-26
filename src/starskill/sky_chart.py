@@ -6,6 +6,7 @@ from collections.abc import Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from functools import lru_cache
 from hashlib import sha256
 from importlib import metadata as importlib_metadata
 import math
@@ -31,6 +32,7 @@ from astropy.time import Time
 from astropy.utils import iers
 import astropy
 import matplotlib
+from matplotlib import font_manager
 from matplotlib.backends.backend_agg import FigureCanvasAgg
 from matplotlib.figure import Figure
 from matplotlib.patches import Circle, Wedge
@@ -94,7 +96,30 @@ PLANETS = (
     ("uranus", "Uranus / 天王星", "#86d4d8"),
     ("neptune", "Neptune / 海王星", "#6688d8"),
 )
+CJK_FONT_CANDIDATES = (
+    "PingFang SC",
+    "Hiragino Sans GB",
+    "Noto Sans CJK SC",
+    "Microsoft YaHei",
+)
 _RENDER_ID_RE = re.compile(r"[A-Za-z0-9_-]{32}\Z")
+
+
+@lru_cache(maxsize=1)
+def resolve_font_families() -> tuple[str, ...]:
+    """Return the render font stack: DejaVu Sans plus the first installed CJK font.
+
+    Agg falls back per glyph across the returned families, so CJK labels render
+    with real glyphs whenever one candidate is installed. Without one, the stack
+    stays DejaVu-only and CJK glyphs degrade to placeholder boxes.
+    """
+    for candidate in CJK_FONT_CANDIDATES:
+        try:
+            font_manager.findfont(candidate, fallback_to_default=False)
+        except ValueError:
+            continue
+        return ("DejaVu Sans", candidate)
+    return ("DejaVu Sans",)
 
 
 class _FullCatalogCache(Protocol):
@@ -146,7 +171,7 @@ def deterministic_astropy_matplotlib() -> Iterator[None]:
         {
             "figure.dpi": CANVAS_DPI,
             "savefig.dpi": CANVAS_DPI,
-            "font.family": "DejaVu Sans",
+            "font.family": list(resolve_font_families()),
             "figure.facecolor": "#000000",
             "savefig.facecolor": "#000000",
             "savefig.transparent": False,
@@ -600,11 +625,14 @@ class SkyChartRenderer:
     @staticmethod
     def _save_rgb_png(figure: Figure) -> bytes:
         with warnings.catch_warnings():
-            warnings.filterwarnings(
-                "ignore",
-                message=r"Glyph .* missing from font\(s\) DejaVu Sans\.",
-                category=UserWarning,
-            )
+            if resolve_font_families() == ("DejaVu Sans",):
+                # No CJK-capable font is installed: CJK glyphs degrade to
+                # placeholder boxes, so the known-missing-glyph noise is muted.
+                warnings.filterwarnings(
+                    "ignore",
+                    message=r"Glyph .* missing from font\(s\) DejaVu Sans\.",
+                    category=UserWarning,
+                )
             canvas = figure.canvas
             canvas.draw()
         rgba = np.asarray(canvas.buffer_rgba(), dtype=np.uint8)
