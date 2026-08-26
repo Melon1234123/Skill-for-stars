@@ -408,6 +408,35 @@ class ImageProviderDescriptor(ImageContractModel):
         return _require_https_url(value)
 
 
+class ImageDiscoveryProvenance(ImageContractModel):
+    provider_id: ImageProviderId
+    endpoint: str
+    source_url: str
+    accessed_at: datetime
+    network_used: bool
+    from_cache: bool
+    content_type: str | None = Field(default=None, min_length=1, max_length=120)
+    bytes: int | None = Field(default=None, ge=0)
+    sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    candidate_count: int = Field(ge=0)
+
+    @field_validator("endpoint", "source_url")
+    @classmethod
+    def urls_must_be_https(cls, value: str) -> str:
+        return _require_https_url(value)
+
+    @model_validator(mode="after")
+    def offline_records_must_not_claim_transfer_evidence(
+        self,
+    ) -> "ImageDiscoveryProvenance":
+        if not self.network_used and not self.from_cache:
+            if self.content_type is not None or self.bytes is not None or self.sha256 is not None:
+                raise ValueError(
+                    "offline discovery provenance must not carry transfer evidence"
+                )
+        return self
+
+
 class ImageTrustDecision(ImageContractModel):
     allowed: bool
     reason_code: str = Field(min_length=1, max_length=96, pattern=r"^[a-z0-9_]+$")
@@ -447,6 +476,7 @@ class ImageSearchResult(ImageContractModel):
     candidates: list[ImageCandidate] = Field(default_factory=list)
     ranks: list[ImageRank] = Field(default_factory=list)
     decisions: dict[str, ImageTrustDecision] = Field(default_factory=dict)
+    provenance: list[ImageDiscoveryProvenance] = Field(default_factory=list)
     selected_candidate: ImageCandidate | None = None
 
     @model_validator(mode="after")

@@ -12,6 +12,7 @@ from starskill.observation_planner import (
     write_observation_plan_json,
     write_visibility_csv,
 )
+from starskill.image_providers import discover_image_candidates
 from starskill.pipeline import run_pipeline
 from starskill.public_data_fetcher import (
     fetch_sdss_image,
@@ -31,6 +32,7 @@ __all__ = [
     "build_time_grid",
     "calculate_moon_illumination",
     "calculate_solar_system_relationship",
+    "discover_image_candidates",
     "fetch_sdss_image",
     "calculate_ephemeris",
     "normalize_target_name",

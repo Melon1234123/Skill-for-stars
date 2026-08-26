@@ -20,6 +20,13 @@ from starskill.observation_planner import (
     write_observation_plan_json,
     write_visibility_csv,
 )
+from starskill.image_providers import (
+    ImageDiscoveryError,
+    ImageDiscoveryNotFoundError,
+    ImageDiscoveryServiceError,
+    ImageDiscoverySizeError,
+    discover_image_candidates,
+)
 from starskill.pipeline import run_pipeline
 from starskill.public_data_fetcher import (
     PublicDataError,
@@ -33,8 +40,10 @@ from starskill.public_data_fetcher import (
 )
 from starskill.schemas import (
     AstronomicalRelationshipTask,
+    AstronomyImageSearchRequest,
     EphemerisResult,
     ObservationTask,
+    ResolvedImageTarget,
     ResolvedTarget,
     SDSSImageRequest,
     SolarSystemRelationshipTask,
@@ -161,6 +170,17 @@ def print_input_validation_error(exc: InputValidationError) -> None:
     )
 
 
+def print_image_discovery_error(code: str, message: str) -> None:
+    print(
+        json.dumps(
+            {"discovered": False, "error": code, "message": message},
+            ensure_ascii=False,
+            indent=2,
+        ),
+        file=sys.stderr,
+    )
+
+
 def print_public_data_error(exc: PublicDataError) -> None:
     print(
         json.dumps(
@@ -261,6 +281,16 @@ def main(argv: Sequence[str] | None = None) -> int:
     image_parser.add_argument("input_path", type=Path)
     image_parser.add_argument("--output-dir", type=Path, required=True)
     image_parser.add_argument("--cache-dir", type=Path, default=Path("cache/sdss"))
+
+    discover_parser = commands.add_parser(
+        "discover-images",
+        help="discover bounded image candidates from the trusted archive registry",
+    )
+    discover_parser.add_argument("input_path", type=Path)
+    discover_parser.add_argument("--output", type=Path, required=True)
+    discover_parser.add_argument(
+        "--cache-dir", type=Path, default=Path("cache/image-discovery")
+    )
 
     sky_chart_parser = commands.add_parser(
         "sky-chart", help="start the local Python sky chart"
@@ -498,6 +528,85 @@ def main(argv: Sequence[str] | None = None) -> int:
                     "source_image": result.source_path,
                     "display_image": result.display_path,
                     "metadata": str(metadata_path),
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
+        return 0
+
+    if args.command == "discover-images":
+        try:
+            search_request = AstronomyImageSearchRequest.model_validate(
+                load_json_object(args.input_path)
+            )
+        except InputValidationError as exc:
+            print_input_validation_error(exc)
+            return 2
+        except ValidationError as exc:
+            print_validation_error(exc)
+            return 2
+        if search_request.target.kind == "solar_system":
+            print_image_discovery_error(
+                "unsupported_image_target",
+                "archive image discovery supports simbad and coordinates targets",
+            )
+            return 2
+        try:
+            resolved = resolve_target_ref(
+                search_request.target,
+                backend=(
+                    SimbadBackend() if search_request.target.kind == "simbad" else None
+                ),
+                cache_dir=Path("cache/targets"),
+            )
+        except (InvalidTargetNameError, TargetResolutionError) as exc:
+            print_resolution_error(exc)
+            return resolution_error_exit_code(exc)
+        image_target = ResolvedImageTarget(
+            label=resolved.label,
+            ra_deg=resolved.ra_deg,
+            dec_deg=resolved.dec_deg,
+            source=resolved.source,
+            observed_at=search_request.observed_at,
+        )
+        try:
+            result = discover_image_candidates(
+                search_request,
+                image_target,
+                cache_dir=args.cache_dir,
+            )
+        except ImageDiscoveryNotFoundError as exc:
+            print_image_discovery_error(exc.code, str(exc))
+            return 6
+        except ImageDiscoveryServiceError as exc:
+            print_image_discovery_error(exc.code, str(exc))
+            return 7
+        except ImageDiscoverySizeError as exc:
+            print_image_discovery_error(exc.code, str(exc))
+            return 8
+        except ImageDiscoveryError as exc:
+            print_image_discovery_error(exc.code, str(exc))
+            return 9
+        if not any(decision.allowed for decision in result.decisions.values()):
+            print_image_discovery_error(
+                "image_discovery_failed",
+                "no trusted provider completed discovery",
+            )
+            return 7
+        args.output.parent.mkdir(parents=True, exist_ok=True)
+        args.output.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+        print(
+            json.dumps(
+                {
+                    "discovered": True,
+                    "target": image_target.label,
+                    "candidate_count": len(result.candidates),
+                    "providers": {
+                        provider_id: decision.reason_code
+                        for provider_id, decision in result.decisions.items()
+                    },
+                    "output": str(args.output),
                 },
                 ensure_ascii=False,
                 indent=2,
