@@ -1,6 +1,6 @@
 ---
 name: run-starskill
-description: Run and inspect reproducible StarSkill astronomy workflows. Use for complete observation bundles, generalized apparent target relationships, bounded SDSS M51 image retrieval, individual target-resolution, ephemeris, planning steps, or a local visual sky chart. Return verified generated visual artifacts directly with concise explanations when a workflow produces them.
+description: Run and inspect reproducible StarSkill astronomy workflows. Use for complete observation bundles, generalized apparent target relationships, bounded SDSS image retrieval, weather-aware tonight recommendations, Open-Meteo forecast evidence, NASA APOD metadata, local Stellarium synchronization, individual target-resolution, ephemeris, planning steps, or a local visual sky chart. Return verified generated visual artifacts directly with concise explanations when a workflow produces them.
 ---
 
 # Run StarSkill
@@ -10,12 +10,16 @@ Use the repository CLI to produce traceable astronomy-training artifacts. Preser
 ## Select the Workflow
 
 - Use `run` for a complete single-target observation bundle such as the Beijing M42 case.
+- Use `recommend` when the user asks whether tonight is worth observing: it runs the complete pipeline and grades the candidate windows with Open-Meteo weather and the local light-pollution snapshot, keeping human review mandatory.
+- Use `conditions` when the user wants only the auditable weather forecast evidence for an observer and time range.
 - Use `relationship` for apparent positional relationships between supported solar-system, SIMBAD, or direct-coordinate targets.
-- Use `fetch-image` for the bounded SDSS DR18 M51 cutout workflow.
+- Use `fetch-image` for a bounded SDSS DR18 cutout of any named target with known ICRS coordinates; the default request remains the M51 case.
+- Use `apod` when the user asks for the NASA Astronomy Picture of the Day; it requires the `STARSKILL_NASA_API_KEY` environment variable and degrades with a structured record when the key or service is missing.
+- Use `stellarium-sync` only when the user runs a local Stellarium instance with RemoteControl enabled and asks to point it at a target.
 - Use `sky-chart` only when the user requests a local visual sky chart.
 - Use `validate`, `resolve`, `ephemeris`, or `plan` when the user explicitly requests only that stage.
 
-Read [references/cli-contract.md](references/cli-contract.md) before running a command. Follow its exact arguments, artifacts, exit codes, and network boundaries.
+Read [references/cli-contract.md](references/cli-contract.md) before running a command. Follow its exact arguments, artifacts, exit codes, and network boundaries. Every command prints one uniform JSON envelope (`status`, `workflow`, `summary`, `artifacts`, `sources`, `human_review`); read machine facts from that envelope instead of re-deriving them from prose.
 
 ## Prepare
 
@@ -54,16 +58,17 @@ For a local visual chart, run `.venv/bin/starskill sky-chart --open` after prere
 4. For public imagery, inspect `image_metadata.json` for source URL, dimensions, byte count, SHA-256, processing steps, and attribution.
 5. Summarize computed facts separately from rule-based conclusions and human-review items.
 6. For `sky-chart`, verify the saved PNG SHA-256 against the JSON export, then report the opaque render ID, catalog mode and status, warnings such as `catalog_degraded`, and remaining human/scientific checks. State that it does not establish weather, visibility, site safety, or live light pollution.
+7. For `conditions`, `recommend`, and `apod`, read availability, cache state, and issue codes from the envelope's `sources`. Report degraded evidence as degraded, name what was unavailable, and never substitute fabricated forecasts, radiance values, or feature metadata.
 
 ## Deliver Generated Results
 
-After a successful workflow, put the real generated result in the user-facing response. Do not leave the user to infer it from a path, opaque ID, or local server URL.
+After a successful workflow, put the real generated result in the user-facing response. Do not leave the user to infer it from a path, opaque ID, or local server URL. Structure every answer with the five-part template in [references/answer-templates.md](references/answer-templates.md): conclusion, key numbers, visual, evidence, human review. Apply that file's per-workflow guidance for the workflow you ran.
 
 1. Embed each verified user-relevant raster artifact with Markdown using its absolute local path, for example `![StarSkill visibility curve](/absolute/path/to/visibility_curve.png)`. Follow it with a normal file link when the user may need the original artifact.
 2. Verify an artifact exists and is non-empty before embedding it. For `sky-chart`, save the PNG and JSON before stopping the server, and require the JSON's `render.png_sha256` to match the saved PNG. Never embed a placeholder, an unverified download, or a file from another run.
 3. Explain the picture before listing implementation details. Name the place, local time, principal numerical result, and the few visual cues the user needs to act on. Keep computed facts separate from interpretation and human checks.
 4. For `run` or `plan`, display the visibility PNG and explain the candidate window, target altitude, and any limiting Sun or Moon condition shown by the result. For `fetch-image`, display the generated presentation PNG and identify the source, processing steps, and attribution; do not call it raw scientific data when it was processed. For `sky-chart`, display the saved PNG and explain that the center is the zenith, the outer circle is the horizon, and the cardinal labels set direction; call out the most useful objects or constellations by direction and altitude when the data supports it.
-5. For workflows that do not produce a figure, such as `relationship`, `validate`, `resolve`, or `ephemeris`, do not invent one. Give a compact table or short structured result instead, and explain the key scientific distinction, such as apparent angular separation versus physical distance.
+5. For workflows that do not produce a figure, such as `relationship`, `validate`, `resolve`, `ephemeris`, `conditions`, `apod`, or `stellarium-sync`, do not invent one. Give a compact table or short structured result instead, and explain the key scientific distinction, such as apparent angular separation versus physical distance. For `recommend`, embed the pipeline's visibility PNG from the same output directory and present the graded windows with their reasons and availability state.
 6. Keep the evidence compact after the result: command, output directory, status, data source or cache state, artifact hash when relevant, and unresolved weather, horizon, equipment, or safety checks.
 
 ## Evaluation Replay

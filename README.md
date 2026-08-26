@@ -29,7 +29,12 @@ StarSkill 是一个可安装、可复现、可审计的天文实训工具包。�
 - `plan`：根据目标高度角、太阳高度角、月亮影响等规则生成候选观测窗口和可视化曲线。
 - `run`：串联输入校验、目标解析、星历计算、观测规划、制图、报告和复核清单，生成完整审计包。
 - `relationship`：Relationship v2 可计算太阳系天体、SIMBAD 名称和直接 ICRS 坐标之间的表观天空位置关系，并兼容原有月亮-木星输入。
-- `fetch-image`：从 SDSS DR18 获取受大小、超时、MIME、JPEG 和尺寸校验约束的 M51 图像，并保留来源和处理元数据。
+- `fetch-image`：从 SDSS DR18 获取受大小、超时、MIME、JPEG 和尺寸校验约束的图像切图。`target_name` 默认 M51，可换成任何已知 ICRS 坐标的目标，产物文件名按目标自动命名，来源和处理元数据全部保留。
+- `conditions`：获取带缓存和来源记录的 Open-Meteo 逐小时天气预报证据；服务不可用时输出结构化降级记录，不伪造样本。
+- `recommend`：在完整观测流水线之上叠加天气预报和本地 Black Marble 光污染快照，输出带理由、来源和人工复核清单的今晚观测建议。
+- `apod`：通过 `STARSKILL_NASA_API_KEY` 获取 NASA 每日天文图元数据，密钥不出现在任何输出中；缺少密钥或服务失败时结构化降级。
+- `stellarium-sync`：只对本地回环地址的 Stellarium RemoteControl 执行固定的状态/位置/时间/对焦操作，连接失败返回退出码 10 和部分操作记录。
+- 统一响应信封：每条命令输出同一结构的 JSON（`status`、`workflow`、`summary`、`artifacts`、`sources`、`human_review`），成功/降级走 stdout，失败走 stderr，历史字段保留兼容。
 - 评测工具：提供 Worker/Reviewer 提示词、案例清单、真实运行证据回放、机器检查和分项评分。
 
 ## 三个可复现案例

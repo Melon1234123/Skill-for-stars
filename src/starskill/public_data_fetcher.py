@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+import re
 from collections.abc import Callable
 from datetime import datetime, timezone
 from io import BytesIO
@@ -96,6 +97,12 @@ def utc_now() -> datetime:
     return datetime.now(timezone.utc)
 
 
+def image_slug(target_name: str) -> str:
+    """Derive the lowercase artifact-name slug for a validated target name."""
+    slug = re.sub(r"[^a-z0-9]+", "_", target_name.lower()).strip("_")
+    return slug or "target"
+
+
 def _query_parameters(request: SDSSImageRequest) -> dict[str, str | int | float]:
     return {
         "ra": request.ra_deg,
@@ -151,7 +158,8 @@ def _render_display(
     draw.line((bar_start, bar_y - 5, bar_start, bar_y + 5), fill="white", width=2)
     draw.line((bar_end, bar_y - 5, bar_end, bar_y + 5), fill="white", width=2)
     draw.text((bar_start, side + 34), "60 arcsec", fill="white")
-    draw.text((side - 168, side + 24), "M51 | SDSS DR18", fill="white")
+    label = f"{request.target_name} | SDSS DR18"
+    draw.text((max(side - 168, bar_end + 16), side + 24), label, fill="white")
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     display.save(output_path, format="PNG")

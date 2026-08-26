@@ -540,6 +540,9 @@ def test_typed_simbad_invalid_name_returns_structured_error(
 
     assert exit_code == 2
     assert output == {
+        "envelope_version": "1.0",
+        "status": "failed",
+        "workflow": command,
         "resolved": False,
         "error": "invalid_target_name",
         "message": "target name contains unsafe characters",
@@ -1081,6 +1084,9 @@ def test_download_catalog_failure_is_stable_and_does_not_start_web_server(
 
     captured = capsys.readouterr()
     assert json.loads(captured.err) == {
+        "envelope_version": "1.0",
+        "status": "failed",
+        "workflow": "sky-chart-catalog",
         "downloaded": False,
         "error": "catalog_download_failed",
     }
@@ -1110,6 +1116,9 @@ def test_download_catalog_unusable_cache_directory_is_stable(
 
     captured = capsys.readouterr()
     assert json.loads(captured.err) == {
+        "envelope_version": "1.0",
+        "status": "failed",
+        "workflow": "sky-chart-catalog",
         "downloaded": False,
         "error": "catalog_download_failed",
     }
@@ -1152,6 +1161,9 @@ def test_sky_chart_server_start_failure_is_stable(monkeypatch, capsys) -> None:
 
     captured = capsys.readouterr()
     assert json.loads(captured.err) == {
+        "envelope_version": "1.0",
+        "status": "failed",
+        "workflow": "sky-chart",
         "started": False,
         "error": "web_server_start_failed",
     }
@@ -1170,6 +1182,9 @@ def test_sky_chart_system_exit_failure_is_stable(monkeypatch, capsys) -> None:
     captured = capsys.readouterr()
     assert captured.out == ""
     assert json.loads(captured.err) == {
+        "envelope_version": "1.0",
+        "status": "failed",
+        "workflow": "sky-chart",
         "started": False,
         "error": "web_server_start_failed",
     }

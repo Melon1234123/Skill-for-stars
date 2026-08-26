@@ -7,6 +7,25 @@ repository root through that virtual environment:
 .venv/bin/python -m starskill <command> ...
 ```
 
+## Uniform Response Envelope
+
+Every command prints one JSON envelope: success and degraded envelopes go to
+stdout, failure envelopes go to stderr. Each envelope carries these keys:
+
+- `envelope_version`: currently `"1.0"`.
+- `status`: `success`, `degraded`, or `failed`.
+- `workflow`: the command name, or `sky-chart-catalog` for `--download-catalog`.
+- `summary`: the principal numerical or state facts for the workflow.
+- `artifacts`: one record per written file with `path`, `bytes`, and `sha256`.
+- `sources`: provenance for external data used by the run, including
+  availability and cache state.
+- `human_review`: unresolved checks that stay with the human user.
+
+Failure envelopes replace `summary`/`artifacts`/`sources`/`human_review` with
+`error` plus `message` or `details`. Historical per-command keys such as
+`resolved`, `valid`, `planned`, `calculated`, and `downloaded` remain present
+for backward compatibility; new consumers should read the envelope keys.
+
 ## Local Visual Sky Chart
 
 The Python-only local chart synopsis is exactly:
@@ -66,13 +85,58 @@ The CSV contains generic primary/secondary AltAz fields, horizon flags, and `ang
 
 Legacy compatibility is retained: `task_type: solar_system_relationship` still requires `targets: ["moon", "jupiter"]` and writes the existing v1 Moon/Jupiter CSV and JSON fields.
 
-## SDSS M51 Image
+## SDSS Image Cutout
 
 ```text
 .venv/bin/python -m starskill fetch-image <request.json> --output-dir <directory> [--cache-dir <directory>]
 ```
 
-Expected files: `data/m51_sdss.jpg`, `figures/m51_display.png`, and `image_metadata.json`. The command may query the SDSS DR18 image cutout endpoint. It enforces a request timeout, byte limit, MIME/JPEG validation, dimensions, and a validated cache.
+The request accepts `target_name` (default `M51`), `ra_deg`, `dec_deg`,
+`scale_arcsec_per_pixel`, `width`, and `height`, so any named target with known
+ICRS coordinates can use the same bounded workflow; resolve coordinates first
+with `resolve` or `resolve-target` when they are not known. Output filenames
+derive from a lowercase slug of `target_name`: `data/<slug>_sdss.jpg`,
+`figures/<slug>_display.png`, and `image_metadata.json`. The default M51
+request keeps the historical `data/m51_sdss.jpg` and `figures/m51_display.png`
+paths. The command may query the SDSS DR18 image cutout endpoint. It enforces a
+request timeout, byte limit, MIME/JPEG validation, dimensions, and a validated
+cache.
+
+## External Evidence Commands
+
+```text
+.venv/bin/python -m starskill conditions <request.json> --output <conditions.json> [--cache-dir <directory>]
+.venv/bin/python -m starskill recommend <task.json> --output-dir <directory> [--cache-dir <directory>] [--weather-cache-dir <directory>] [--light-pollution-snapshot <snapshot.json>] [threshold options]
+.venv/bin/python -m starskill apod [--date YYYY-MM-DD] --output <nasa_feature.json> [--cache-dir <directory>]
+.venv/bin/python -m starskill stellarium-sync <request.json> --output <stellarium_sync.json> [--base-url http://127.0.0.1:8090]
+```
+
+- `conditions` validates an observer/time-range request and fetches a bounded
+  Open-Meteo hourly forecast with a 30-minute cache. It exits `0` when the
+  evidence is fresh or cached and `5` (degraded) when the provider is
+  unavailable; a degraded run still writes the structured unavailable record
+  and never fabricates samples.
+- `recommend` runs the complete observation pipeline into the output
+  directory, then combines the geometric result with the Open-Meteo forecast
+  and the local Black Marble light-pollution snapshot into
+  `recommendation.json` plus `conditions.json`. Grades stay conservative rule
+  outputs with reasons, provenance, and mandatory human-review items. Exit `0`
+  requires a successful pipeline and available weather evidence; any degraded
+  input exits `5`. Target-resolution failures keep exit codes `2`, `3`, and
+  `4`.
+- `apod` fetches NASA APOD metadata using the `STARSKILL_NASA_API_KEY`
+  environment variable. The key never appears in outputs. A missing key or an
+  unavailable service exits `5` with a structured unavailable record; an
+  invalid `--date` exits `2`.
+- `stellarium-sync` performs only the fixed status/location/time/focus
+  operations against a local Stellarium RemoteControl endpoint (loopback port
+  8090 unless `STARSKILL_STELLARIUM_BASE_URL` or `--base-url` overrides it,
+  and non-loopback URLs are rejected). A connection failure writes the partial
+  operation record and exits `10`.
+
+Weather forecasts, light-pollution radiance, and APOD metadata are planning
+evidence, never a go/no-go safety decision. Availability, cache state, and
+issue codes are recorded in each envelope's `sources`.
 
 ## Partial Commands
 
@@ -92,11 +156,12 @@ Expected files: `data/m51_sdss.jpg`, `figures/m51_display.png`, and `image_metad
 | 2 | Input, target-name, or threshold validation failure |
 | 3 | Target not found |
 | 4 | SIMBAD service failure |
-| 5 | Complete run degraded because a non-data artifact such as plotting failed |
+| 5 | Degraded result: a non-data artifact such as plotting failed, or external evidence (weather, light pollution, APOD) is unavailable |
 | 6 | Public image not found or no data |
 | 7 | Public data service failure |
 | 8 | Public response exceeds the configured byte limit |
 | 9 | Public response fails MIME, JPEG, dimension, or content validation |
+| 10 | Local Stellarium RemoteControl is unreachable |
 
 Malformed, unreadable, non-UTF-8, or non-object JSON input is a validation
 failure: return exit code `2` and write `error=validation_error` JSON to stderr.

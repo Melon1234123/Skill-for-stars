@@ -24,6 +24,7 @@ from starskill.public_data_fetcher import (
     PublicDataError,
     UrlImageBackend,
     fetch_sdss_image,
+    image_slug,
     write_public_image_metadata,
 )
 from starskill.recommendations import recommend_tonight
@@ -319,13 +320,14 @@ class StarSkillMcpService:
         except ValidationError as exc:
             return _validation_failure(exc)
 
-        run_id, output_dir = self._new_run("m51")
+        slug = image_slug(validated_request.target_name)
+        run_id, output_dir = self._new_run(slug)
         try:
             result = fetch_sdss_image(
                 validated_request,
                 cache_dir=self.image_cache_dir,
-                source_path=output_dir / "data" / "m51_sdss.jpg",
-                display_path=output_dir / "figures" / "m51_display.png",
+                source_path=output_dir / "data" / f"{slug}_sdss.jpg",
+                display_path=output_dir / "figures" / f"{slug}_display.png",
                 backend=self.image_backend_factory(),
                 clock=self.clock,
             )

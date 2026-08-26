@@ -558,7 +558,12 @@ class AstronomicalRelationshipResult(InputModel):
 
 
 class SDSSImageRequest(InputModel):
-    target_name: Literal["M51"] = "M51"
+    target_name: str = Field(
+        default="M51",
+        min_length=1,
+        max_length=40,
+        pattern=r"^[A-Za-z0-9][A-Za-z0-9 _+.-]*$",
+    )
     data_release: Literal["DR18"] = "DR18"
     ra_deg: float = Field(default=202.4696, ge=0, lt=360)
     dec_deg: float = Field(default=47.1952, ge=-90, le=90)
