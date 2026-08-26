@@ -16,6 +16,7 @@ from starskill.light_pollution import (
     BLACK_MARBLE_SOURCE_URL,
     BlackMarbleLightPollutionProvider,
 )
+from starskill.external_data import JsonBackend, UrlJsonBackend
 from starskill.nasa import NasaApodProvider
 from starskill.observation_planner import VisibilityCriteria
 from starskill.pipeline import run_pipeline, utc_now
@@ -136,6 +137,7 @@ class StarSkillMcpService:
         image_cache_dir: Path,
         target_backend_factory: Callable[[], TargetBackend] = SimbadBackend,
         image_backend_factory: Callable[[], ImageBackend] = UrlImageBackend,
+        horizons_backend_factory: Callable[[], JsonBackend] = UrlJsonBackend,
         clock: Callable[[], datetime] = utc_now,
         weather_cache_dir: Path | None = None,
         light_pollution_snapshot_path: Path | None = None,
@@ -159,6 +161,7 @@ class StarSkillMcpService:
         self.nasa_cache_dir = (nasa_cache_dir or Path("cache/nasa")).resolve()
         self.target_backend_factory = target_backend_factory
         self.image_backend_factory = image_backend_factory
+        self.horizons_backend_factory = horizons_backend_factory
         self.clock = clock
         self.weather_provider_factory = weather_provider_factory or (
             lambda: OpenMeteoWeatherProvider(
@@ -299,13 +302,16 @@ class StarSkillMcpService:
             return _validation_failure(exc)
 
         run_id, output_dir = self._new_run("relationship")
+        target_kinds = {validated_task.primary.kind, validated_task.secondary.kind}
         try:
             result = calculate_astronomical_relationship(
                 validated_task,
                 target_backend=(
-                    self.target_backend_factory()
-                    if "simbad"
-                    in {validated_task.primary.kind, validated_task.secondary.kind}
+                    self.target_backend_factory() if "simbad" in target_kinds else None
+                ),
+                horizons_backend=(
+                    self.horizons_backend_factory()
+                    if "horizons" in target_kinds
                     else None
                 ),
                 cache_dir=self.target_cache_dir,
