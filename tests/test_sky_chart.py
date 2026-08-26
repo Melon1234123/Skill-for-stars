@@ -6,6 +6,7 @@ from io import BytesIO
 import json
 from pathlib import Path
 import re
+import warnings
 
 from PIL import Image, ImageChops
 from matplotlib.backends.backend_agg import FigureCanvasAgg
@@ -146,6 +147,30 @@ def test_fixed_render_png_bytes_are_deterministic(service, fixed_chart) -> None:
     repeated = service.render(FIXED_REQUEST)
     assert repeated.png_bytes == fixed_chart.png_bytes
     assert repeated.metadata.render.png_sha256 == fixed_chart.metadata.render.png_sha256
+
+
+def test_cjk_labels_render_without_missing_glyph_warnings(service) -> None:
+    if len(sky_chart_module.resolve_font_families()) < 2:
+        pytest.skip("no CJK-capable font is installed")
+    request = FIXED_REQUEST.model_copy(
+        update={
+            "observer": FIXED_REQUEST.observer.model_copy(
+                update={"location_name": "北京"}
+            ),
+            "timestamp_local": datetime.fromisoformat("2026-01-10T22:30:00+08:00"),
+        }
+    )
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        chart = service.render(request)
+        repeated = service.render(request)
+    glyph_warnings = [
+        warning
+        for warning in caught
+        if re.search(r"Glyph .* missing from font", str(warning.message))
+    ]
+    assert glyph_warnings == []
+    assert repeated.png_bytes == chart.png_bytes
 
 
 def test_invisible_object_is_recorded_but_not_drawn(fixed_chart) -> None:
