@@ -166,6 +166,47 @@ Weather forecasts, light-pollution radiance, and APOD metadata are planning
 evidence, never a go/no-go safety decision. Availability, cache state, and
 issue codes are recorded in each envelope's `sources`.
 
+## Trusted Image Discovery
+
+```text
+.venv/bin/python -m starskill discover-images <request.json> --output <result.json> [--cache-dir <directory>]
+```
+
+The request JSON is an `AstronomyImageSearchRequest`: a typed `target`
+(`simbad` or `coordinates`; a `solar_system` body is rejected with structured
+`unsupported_image_target` and exit code `2`), optional `bands` and
+`field_of_view_arcmin`, size, format, timeout, and byte-limit bounds, and a
+`provider_mode` of `auto_trusted`, `sdss_dr18`, `mast`, `esa_sky`, or
+`panstarrs`.
+
+Discovery returns candidate metadata, never image bytes. The output JSON is an
+`ImageSearchResult` with per-candidate HTTPS URLs, per-provider trust
+decisions, and per-query provenance: endpoint, access time, byte count,
+SHA-256, and cache state. Every source and download URL must validate against
+the registered provider descriptor's host allowlist and fixed endpoint roots;
+anything else is rejected as `image_discovery_untrusted_url`.
+
+Provider behavior:
+
+- `panstarrs` runs the two-step Pan-STARRS flow: one bounded
+  `ps1filenames.py` stack-table query, then per-filter and color composite
+  `fitscut.cgi` JPEG cutout URLs.
+- `sdss_dr18` builds one deterministic SkyServer DR18 `getjpeg` cutout URL
+  offline; it performs no network query during discovery.
+- `mast` runs one bounded `Mast.Caom.Cone` metadata query and emits only
+  `mast:` preview URIs rewritten through the fixed `Download/file` endpoint.
+- `esa_sky` runs one bounded ESASky TAP cone query over HST observations and
+  emits only allowlisted postcard URLs.
+
+Metadata queries enforce the request timeout, the smaller of the request and
+descriptor byte limits, and strict MIME validation, and reuse a SHA-256
+validated cache under `--cache-dir` (default `cache/image-discovery`). A named
+`provider_mode` maps its structured failure to exit codes `6`--`9` exactly
+like the public-image workflow. `auto_trusted` records each failed provider as
+a structured `allowed: false` trust decision instead, and exits `7` only when
+no provider completes. Empty candidate lists are legitimate results; the
+command never substitutes invented candidates or provenance.
+
 ## Partial Commands
 
 ```text

@@ -34,6 +34,13 @@ from starskill.observation_planner import (
     write_visibility_csv,
 )
 from starskill.external_data import UrlJsonBackend
+from starskill.image_providers import (
+    ImageDiscoveryError,
+    ImageDiscoveryNotFoundError,
+    ImageDiscoveryServiceError,
+    ImageDiscoverySizeError,
+    discover_image_candidates,
+)
 from starskill.pipeline import run_pipeline, utc_now
 from starskill.public_data_fetcher import (
     PublicDataError,
@@ -49,12 +56,14 @@ from starskill.public_data_fetcher import (
 from starskill.recommendations import HUMAN_REVIEW_ITEMS, recommend_tonight
 from starskill.schemas import (
     AstronomicalRelationshipTask,
+    AstronomyImageSearchRequest,
     EphemerisResult,
     ExternalSource,
     LightPollutionResult,
     ObservationPlanResult,
     ObservationTask,
     ObservingConditionsRequest,
+    ResolvedImageTarget,
     ResolvedTarget,
     SDSSImageRequest,
     SolarSystemRelationshipTask,
@@ -175,6 +184,18 @@ def print_input_validation_error(exc: InputValidationError, workflow: str) -> No
                 }
             ],
             legacy={"valid": False},
+        ),
+        stream=sys.stderr,
+    )
+
+
+def print_image_discovery_error(code: str, message: str) -> None:
+    emit(
+        failure_payload(
+            "discover-images",
+            error=code,
+            message=message,
+            legacy={"discovered": False},
         ),
         stream=sys.stderr,
     )
@@ -382,6 +403,16 @@ def main(argv: Sequence[str] | None = None) -> int:
     stellarium_parser.add_argument(
         "--base-url",
         default=os.environ.get("STARSKILL_STELLARIUM_BASE_URL") or DEFAULT_BASE_URL,
+    )
+
+    discover_parser = commands.add_parser(
+        "discover-images",
+        help="discover bounded image candidates from the trusted archive registry",
+    )
+    discover_parser.add_argument("input_path", type=Path)
+    discover_parser.add_argument("--output", type=Path, required=True)
+    discover_parser.add_argument(
+        "--cache-dir", type=Path, default=Path("cache/image-discovery")
     )
 
     sky_chart_parser = commands.add_parser(
@@ -915,6 +946,98 @@ def main(argv: Sequence[str] | None = None) -> int:
                 },
                 artifacts=[artifact_record(args.output)],
                 legacy={"synced": True},
+            )
+        )
+        return 0
+
+    if args.command == "discover-images":
+        try:
+            search_request = AstronomyImageSearchRequest.model_validate(
+                load_json_object(args.input_path)
+            )
+        except InputValidationError as exc:
+            print_input_validation_error(exc, "discover-images")
+            return 2
+        except ValidationError as exc:
+            print_validation_error(exc, "discover-images")
+            return 2
+        if search_request.target.kind == "solar_system":
+            print_image_discovery_error(
+                "unsupported_image_target",
+                "archive image discovery supports simbad and coordinates targets",
+            )
+            return 2
+        try:
+            resolved = resolve_target_ref(
+                search_request.target,
+                backend=(
+                    SimbadBackend() if search_request.target.kind == "simbad" else None
+                ),
+                cache_dir=Path("cache/targets"),
+            )
+        except (InvalidTargetNameError, TargetResolutionError) as exc:
+            print_resolution_error(exc, "discover-images")
+            return resolution_error_exit_code(exc)
+        image_target = ResolvedImageTarget(
+            label=resolved.label,
+            ra_deg=resolved.ra_deg,
+            dec_deg=resolved.dec_deg,
+            source=resolved.source,
+            observed_at=search_request.observed_at,
+        )
+        try:
+            result = discover_image_candidates(
+                search_request,
+                image_target,
+                cache_dir=args.cache_dir,
+            )
+        except ImageDiscoveryNotFoundError as exc:
+            print_image_discovery_error(exc.code, str(exc))
+            return 6
+        except ImageDiscoveryServiceError as exc:
+            print_image_discovery_error(exc.code, str(exc))
+            return 7
+        except ImageDiscoverySizeError as exc:
+            print_image_discovery_error(exc.code, str(exc))
+            return 8
+        except ImageDiscoveryError as exc:
+            print_image_discovery_error(exc.code, str(exc))
+            return 9
+        if not any(decision.allowed for decision in result.decisions.values()):
+            print_image_discovery_error(
+                "image_discovery_failed",
+                "no trusted provider completed discovery",
+            )
+            return 7
+        args.output.parent.mkdir(parents=True, exist_ok=True)
+        args.output.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+        provider_reasons = {
+            provider_id: decision.reason_code
+            for provider_id, decision in result.decisions.items()
+        }
+        emit(
+            success_payload(
+                "discover-images",
+                summary={
+                    "target": image_target.label,
+                    "candidate_count": len(result.candidates),
+                    "providers": provider_reasons,
+                },
+                artifacts=[artifact_record(args.output)],
+                sources=[
+                    {"provider_id": provider_id, **decision.model_dump(mode="json")}
+                    for provider_id, decision in result.decisions.items()
+                ],
+                human_review=[
+                    "Candidates are validated metadata only; no image bytes were downloaded.",
+                ],
+                legacy={
+                    "discovered": True,
+                    "target": image_target.label,
+                    "candidate_count": len(result.candidates),
+                    "providers": provider_reasons,
+                    "output": str(args.output),
+                },
             )
         )
         return 0
