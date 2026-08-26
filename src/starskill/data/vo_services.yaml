@@ -1,0 +1,20 @@
+schema_version: "1.0"
+services:
+  - service_id: simbad
+    name: SIMBAD TAP
+    organization: Centre de Donnees astronomiques de Strasbourg (CDS)
+    tap_endpoint: https://simbad.cds.unistra.fr/simbad/sim-tap
+    default_tables:
+      - basic
+  - service_id: vizier
+    name: VizieR TAP
+    organization: Centre de Donnees astronomiques de Strasbourg (CDS)
+    tap_endpoint: https://tapvizier.cds.unistra.fr/TAPVizieR/tap
+    default_tables:
+      - I/355/gaiadr3
+  - service_id: gaia
+    name: Gaia Archive TAP+
+    organization: European Space Agency
+    tap_endpoint: https://gea.esac.esa.int/tap-server/tap
+    default_tables:
+      - gaiadr3.gaia_source

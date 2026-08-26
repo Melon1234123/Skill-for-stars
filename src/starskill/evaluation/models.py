@@ -9,6 +9,131 @@ class EvaluationModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+PersonaName = Literal[
+    "student",
+    "teacher",
+    "outreach",
+    "amateur_observer",
+    "undergraduate_researcher",
+    "researcher",
+    "reviewer",
+]
+
+TaskFamily = Literal[
+    "observation",
+    "catalog_query",
+    "cone_search",
+    "crossmatch",
+    "ambiguous_input",
+    "service_failure",
+    "scientific_adversarial",
+]
+
+TaskExpectedOutcome = Literal["success", "clarify", "structured_failure", "correct_claim"]
+
+
+class PersonaProfile(EvaluationModel):
+    """Stable requirements for one simulated StarSkill user persona."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    name: PersonaName
+    knowledge_level: str = Field(min_length=1)
+    goals: tuple[str, ...] = Field(min_length=1)
+    preferred_answer_style: str = Field(min_length=1)
+    expected_evidence: tuple[str, ...] = Field(min_length=1)
+    common_mistakes: tuple[str, ...] = Field(min_length=1)
+    failure_sensitivity: Literal["low", "medium", "high"]
+
+
+class GeneratedEvaluationTask(EvaluationModel):
+    """One portable, deterministic persona-evaluation task record."""
+
+    schema_version: Literal[1] = 1
+    task_id: str = Field(min_length=1)
+    seed: int = Field(ge=0)
+    persona: PersonaName
+    persona_profile: PersonaProfile
+    task_family: TaskFamily
+    template_id: str = Field(min_length=1)
+    prompt: str = Field(min_length=1)
+    task_input: dict[str, Any]
+    required_tools: tuple[str, ...] = Field(min_length=1)
+    expected_evidence: tuple[str, ...] = Field(min_length=1)
+    expected_outcome: TaskExpectedOutcome
+
+
+class ToolCallRecord(EvaluationModel):
+    """One external-Agent tool call captured for self-play evidence."""
+
+    tool: str = Field(min_length=1)
+    arguments: dict[str, Any] = Field(default_factory=dict)
+    result: dict[str, Any] = Field(default_factory=dict)
+    status: Literal["success", "failed"] = "success"
+
+
+class AgentResponse(EvaluationModel):
+    """LLM-provider-neutral response returned by an external harness."""
+
+    response_markdown: str
+    tool_calls: tuple[ToolCallRecord, ...] = Field(default_factory=tuple)
+    artifacts: dict[str, str] = Field(default_factory=dict)
+
+
+class SelfPlayPrompt(EvaluationModel):
+    """Portable prompt supplied to an AgentProvider for one generated task."""
+
+    schema_version: Literal[1] = 1
+    run_id: str = Field(min_length=1)
+    task: GeneratedEvaluationTask
+    prompt: str = Field(min_length=1)
+    requirements: tuple[str, ...] = Field(min_length=1)
+
+
+class SelfPlayDimensionScore(EvaluationModel):
+    score: float = Field(ge=0, le=1)
+    reasons: tuple[str, ...] = Field(min_length=1)
+    evidence: tuple[str, ...] = Field(default_factory=tuple)
+
+
+class SelfPlayScore(EvaluationModel):
+    """Transparent heuristic score for a captured self-play response."""
+
+    schema_version: Literal[1] = 1
+    task_id: str = Field(min_length=1)
+    status: Literal["completed", "failed"]
+    task_success: SelfPlayDimensionScore
+    scientific_correctness: SelfPlayDimensionScore
+    tool_selection: SelfPlayDimensionScore
+    evidence_quality: SelfPlayDimensionScore
+    reproducibility: SelfPlayDimensionScore
+    persona_satisfaction: SelfPlayDimensionScore
+    overall_score: float = Field(ge=0, le=1)
+    failure: dict[str, str] | None = None
+
+
+class PersonaSatisfaction(EvaluationModel):
+    schema_version: Literal[1] = 1
+    task_id: str = Field(min_length=1)
+    persona: PersonaName
+    satisfaction: float = Field(ge=0, le=1)
+    satisfied: bool
+    reasons: tuple[str, ...] = Field(min_length=1)
+
+
+class SelfPlayTrace(EvaluationModel):
+    """Validated in-memory representation of a persisted self-play run."""
+
+    run_id: str = Field(min_length=1)
+    run_dir: str = Field(min_length=1)
+    prompt: SelfPlayPrompt
+    response_markdown: str
+    tool_calls: tuple[ToolCallRecord, ...]
+    score: SelfPlayScore
+    satisfaction: PersonaSatisfaction
+    artifact_sha256: dict[str, str] = Field(default_factory=dict)
+
+
 class ArtifactExpectation(EvaluationModel):
     path: str
     non_empty: bool = True

@@ -18,12 +18,15 @@ dependencies = [
     "numpy==2.4.2",
     "Pillow>=10,<13",
     "pydantic>=2.10,<3",
+    "PyYAML>=6,<7",
+    "pyvo>=1.7,<2",
     "tzdata>=2025.2",
     "uvicorn>=0.30,<1",
 ]
 
 [project.scripts]
 starskill = "starskill.cli:main"
+starskill-eval = "starskill.evaluation.persona_cli:main"
 starskill-mcp = "starskill.mcp_server:main"
 starskill-web = "starskill.web_api:main"
 
@@ -40,7 +43,7 @@ validation = [
 where = ["src"]
 
 [tool.setuptools.package-data]
-starskill = ["data/*.json", "static/*.html"]
+starskill = ["data/*.json", "data/*.yaml", "static/*.html"]
 
 [tool.pytest.ini_options]
 addopts = "-q"

@@ -35,6 +35,9 @@ StarSkill 是一个可安装、可复现、可审计的天文实训工具包。�
 - `apod`：通过 `STARSKILL_NASA_API_KEY` 获取 NASA 每日天文图元数据，密钥不出现在任何输出中；缺少密钥或服务失败时结构化降级。
 - `stellarium-sync`：只对本地回环地址的 Stellarium RemoteControl 执行固定的状态/位置/时间/对焦操作，连接失败返回退出码 10 和部分操作记录。
 - 统一响应信封：每条命令输出同一结构的 JSON（`status`、`workflow`、`summary`、`artifacts`、`sources`、`human_review`），成功/降级走 stdout，失败走 stderr，历史字段保留兼容。
+- `VO Query Core`：以 IVOA TAP、ADQL、PyVO 和 Astropy Table 对允许列表中的 SIMBAD、VizieR、Gaia 服务进行可审计查询；每次查询保留请求、最终 ADQL、ECSV 结果和 provenance，并通过受限 MCP 工具调用。
+- `Persona 评测生成`：在既有评测框架内，按固定随机种子生成 student、teacher、outreach、amateur observer、undergraduate researcher、researcher、reviewer 的离线任务集，覆盖观测、目录查询、圆锥查询、交叉匹配、歧义输入、服务失败和科学对抗场景。
+- `Self-play 数据闭环`：通过外部 harness 注入的 `AgentProvider` 捕获 prompt、回答、工具调用、评分、满意度和产物，导出 regression、successful traces、preferences 三类 JSONL 数据；仓库不调用 LLM API，也不执行模型微调。
 - 评测工具：提供 Worker/Reviewer 提示词、案例清单、真实运行证据回放、机器检查和分项评分。
 
 ## 三个可复现案例
@@ -165,6 +168,9 @@ python -m starskill fetch-image examples/m51_sdss_image.json \
 ```
 
 所有命令的参数、产物和退出码见 [`skills/run-starskill/references/cli-contract.md`](skills/run-starskill/references/cli-contract.md)。错误以结构化 JSON 写入 stderr，外部服务失败不能被伪造为成功。
+
+IVOA 查询核心的服务允许列表、Python 接口、ADQL 边界和证据产物见 [`docs/vo-query-core.md`](docs/vo-query-core.md)。
+Persona 定义、任务族和确定性任务生成命令见 [`docs/persona-evaluation.md`](docs/persona-evaluation.md)。
 
 ## AI Agent Skill
 

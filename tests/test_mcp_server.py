@@ -434,7 +434,19 @@ def test_stdio_server_advertises_supported_tools_and_run_resources(tmp_path) -> 
             "recommend_tonight",
             "get_nasa_feature",
             "sync_stellarium",
+            "astronomy_describe_table",
+            "astronomy_cone_search",
+            "astronomy_catalog_query",
+            "astronomy_tap_query",
         }
+        cone_schema = next(
+            tool.inputSchema
+            for tool in tools.tools
+            if tool.name == "astronomy_cone_search"
+        )
+        assert cone_schema["properties"]["request"]["$ref"].endswith(
+            "/ConeSearchRequest"
+        )
         assert [template.uriTemplate for template in templates.resourceTemplates] == [
             "starskill://runs/{run_id}/{resource}"
         ]
