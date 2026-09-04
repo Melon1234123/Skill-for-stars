@@ -1,0 +1,51 @@
+{
+  "label": "M 42",
+  "kind": "simbad",
+  "motion": "fixed_icrs",
+  "ra_deg": 83.8201,
+  "dec_deg": -5.3876,
+  "source": {
+    "provider": "simbad",
+    "from_cache": false,
+    "accessed_at": "2026-09-04T04:34:59.802548Z"
+  },
+  "catalog_target": {
+    "input_name": "M42",
+    "query_name": "M 42",
+    "canonical_name": "M 42",
+    "ra_deg": 83.8201,
+    "dec_deg": -5.3876,
+    "object_type": "HII",
+    "aliases": [
+      "SRGA J053516.8-052315",
+      "3C 145",
+      "4C -05.21",
+      "CTA 37",
+      "LBN 209.13-19.35",
+      "LBN 974",
+      "M 42",
+      "MSH 05-0-11",
+      "Mills 05+0A",
+      "NAME Great Orion Nebula",
+      "NAME Ori Nebula",
+      "NAME Orion Nebula",
+      "NGC 1976",
+      "NRL 6",
+      "PKS 0532-054",
+      "PKS 0532-05",
+      "XSS J05351-0519",
+      "[DGW65] 26",
+      "[PT56] 6",
+      "[WCO2009] J053517-052326",
+      "GAL 209.01-19.4",
+      "[KPS2012] MWSC 0582"
+    ],
+    "coordinate_frame": "ICRS",
+    "source": {
+      "database": "SIMBAD",
+      "service_url": "https://simbad.cds.unistra.fr/simbad/sim-tap/sync",
+      "accessed_at": "2026-09-04T04:34:59.802548Z",
+      "from_cache": false
+    }
+  }
+}

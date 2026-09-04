@@ -1,0 +1,702 @@
+{
+  "target": {
+    "label": "M 42",
+    "kind": "simbad",
+    "motion": "fixed_icrs",
+    "ra_deg": 83.8201,
+    "dec_deg": -5.3876,
+    "source": {
+      "provider": "simbad",
+      "from_cache": false,
+      "accessed_at": "2026-09-04T04:34:59.802548Z"
+    },
+    "catalog_target": {
+      "input_name": "M42",
+      "query_name": "M 42",
+      "canonical_name": "M 42",
+      "ra_deg": 83.8201,
+      "dec_deg": -5.3876,
+      "object_type": "HII",
+      "aliases": [
+        "SRGA J053516.8-052315",
+        "3C 145",
+        "4C -05.21",
+        "CTA 37",
+        "LBN 209.13-19.35",
+        "LBN 974",
+        "M 42",
+        "MSH 05-0-11",
+        "Mills 05+0A",
+        "NAME Great Orion Nebula",
+        "NAME Ori Nebula",
+        "NAME Orion Nebula",
+        "NGC 1976",
+        "NRL 6",
+        "PKS 0532-054",
+        "PKS 0532-05",
+        "XSS J05351-0519",
+        "[DGW65] 26",
+        "[PT56] 6",
+        "[WCO2009] J053517-052326",
+        "GAL 209.01-19.4",
+        "[KPS2012] MWSC 0582"
+      ],
+      "coordinate_frame": "ICRS",
+      "source": {
+        "database": "SIMBAD",
+        "service_url": "https://simbad.cds.unistra.fr/simbad/sim-tap/sync",
+        "accessed_at": "2026-09-04T04:34:59.802548Z",
+        "from_cache": false
+      }
+    }
+  },
+  "observer": {
+    "location_name": "北京",
+    "longitude": 116.4074,
+    "latitude": 39.9042,
+    "timezone": "Asia/Shanghai"
+  },
+  "interval_minutes": 10,
+  "source_ephemeris_settings": {
+    "calculated_at": "2026-09-04T04:35:00.103101Z",
+    "astropy_version": "7.2.0",
+    "time_scale": "UTC",
+    "horizontal_frame": "AltAz",
+    "atmospheric_refraction": false,
+    "iers_auto_download": false
+  },
+  "criteria": {
+    "min_target_altitude_deg": 30.0,
+    "max_sun_altitude_deg": -12.0
+  },
+  "samples": [
+    {
+      "timestamp_local": "2026-01-10T18:00:00+08:00",
+      "timestamp_utc": "2026-01-10T10:00:00Z",
+      "target_altitude_deg": 13.213936829311233,
+      "target_azimuth_deg": 108.76553410132233,
+      "sun_altitude_deg": -9.89548837707971,
+      "moon_altitude_deg": -60.24602375331625,
+      "moon_separation_deg": 109.33230002535896,
+      "moon_illumination_fraction": 0.5247993113340378,
+      "is_observable": false,
+      "rejection_reasons": [
+        "target_below_minimum_altitude",
+        "sun_above_maximum_altitude"
+      ]
+    },
+    {
+      "timestamp_local": "2026-01-10T18:10:00+08:00",
+      "timestamp_utc": "2026-01-10T10:10:00Z",
+      "target_altitude_deg": 15.024943627143614,
+      "target_azimuth_deg": 110.53651953130819,
+      "sun_altitude_deg": -11.700514430024434,
+      "moon_altitude_deg": -60.11644075225377,
+      "moon_separation_deg": 109.42961139575874,
+      "moon_illumination_fraction": 0.5241252817897553,
+      "is_observable": false,
+      "rejection_reasons": [
+        "target_below_minimum_altitude",
+        "sun_above_maximum_altitude"
+      ]
+    },
+    {
+      "timestamp_local": "2026-01-10T18:20:00+08:00",
+      "timestamp_utc": "2026-01-10T10:20:00Z",
+      "target_altitude_deg": 16.814872168882022,
+      "target_azimuth_deg": 112.34533948771552,
+      "sun_altitude_deg": -13.521542972153028,
+      "moon_altitude_deg": -59.836504442606916,
+      "moon_separation_deg": 109.52676977514261,
+      "moon_illumination_fraction": 0.5234513121789279,
+      "is_observable": false,
+      "rejection_reasons": [
+        "target_below_minimum_altitude"
+      ]
+    },
+    {
+      "timestamp_local": "2026-01-10T18:30:00+08:00",
+      "timestamp_utc": "2026-01-10T10:30:00Z",
+      "target_altitude_deg": 18.581447858747612,
+      "target_azimuth_deg": 114.19609650529704,
+      "sun_altitude_deg": -15.357273765300404,
+      "moon_altitude_deg": -59.41053235086081,
+      "moon_separation_deg": 109.62372421367444,
+      "moon_illumination_fraction": 0.5227774035118316,
+      "is_observable": false,
+      "rejection_reasons": [
+        "target_below_minimum_altitude"
+      ]
+    },
+    {
+      "timestamp_local": "2026-01-10T18:40:00+08:00",
+      "timestamp_utc": "2026-01-10T10:40:00Z",
+      "target_altitude_deg": 20.322242160355724,
+      "target_azimuth_deg": 116.09299715979964,
+      "sun_altitude_deg": -17.206444202710003,
+      "moon_altitude_deg": -58.8447403811565,
+      "moon_separation_deg": 109.72042405400695,
+      "moon_illumination_fraction": 0.5221035567851513,
+      "is_observable": false,
+      "rejection_reasons": [
+        "target_below_minimum_altitude"
+      ]
+    },
+    {
+      "timestamp_local": "2026-01-10T18:50:00+08:00",
+      "timestamp_utc": "2026-01-10T10:50:00Z",
+      "target_altitude_deg": 22.03465696162079,
+      "target_azimuth_deg": 118.04034664908684,
+      "sun_altitude_deg": -19.06782213413624,
+      "moon_altitude_deg": -58.14683981693487,
+      "moon_separation_deg": 109.81681901058202,
+      "moon_illumination_fraction": 0.5214297730074556,
+      "is_observable": false,
+      "rejection_reasons": [
+        "target_below_minimum_altitude"
+      ]
+    },
+    {
+      "timestamp_local": "2026-01-10T19:00:00+08:00",
+      "timestamp_utc": "2026-01-10T11:00:00Z",
+      "target_altitude_deg": 23.71590887232879,
+      "target_azimuth_deg": 120.04253656345172,
+      "sun_altitude_deg": -20.940198299269664,
+      "moon_altitude_deg": -57.32558994766585,
+      "moon_separation_deg": 109.91285924970957,
+      "moon_illumination_fraction": 0.5207560531794968,
+      "is_observable": false,
+      "rejection_reasons": [
+        "target_below_minimum_altitude"
+      ]
+    },
+    {
+      "timestamp_local": "2026-01-10T19:10:00+08:00",
+      "timestamp_utc": "2026-01-10T11:10:00Z",
+      "target_altitude_deg": 25.36301377942662,
+      "target_azimuth_deg": 122.10402425535503,
+      "sun_altitude_deg": -22.822378268667123,
+      "moon_altitude_deg": -56.390359160846955,
+      "moon_separation_deg": 110.00849546748427,
+      "moon_illumination_fraction": 0.5200823983001963,
+      "is_observable": false,
+      "rejection_reasons": [
+        "target_below_minimum_altitude"
+      ]
+    },
+    {
+      "timestamp_local": "2026-01-10T19:20:00+08:00",
+      "timestamp_utc": "2026-01-10T11:20:00Z",
+      "target_altitude_deg": 26.972772115544572,
+      "target_azimuth_deg": 124.22930196764229,
+      "sun_altitude_deg": -24.713173762795424,
+      "moon_altitude_deg": -55.35073435914291,
+      "moon_separation_deg": 110.1036789702488,
+      "moon_illumination_fraction": 0.5194088093683923,
+      "is_observable": false,
+      "rejection_reasons": [
+        "target_below_minimum_altitude"
+      ]
+    },
+    {
+      "timestamp_local": "2026-01-10T19:30:00+08:00",
+      "timestamp_utc": "2026-01-10T11:30:00Z",
+      "target_altitude_deg": 28.541755454607493,
+      "target_azimuth_deg": 126.42285365071028,
+      "sun_altitude_deg": -26.61139318586407,
+      "moon_altitude_deg": -54.21620198144333,
+      "moon_separation_deg": 110.19836175078142,
+      "moon_illumination_fraction": 0.5187352873835965,
+      "is_observable": false,
+      "rejection_reasons": [
+        "target_below_minimum_altitude"
+      ]
+    },
+    {
+      "timestamp_local": "2026-01-10T19:40:00+08:00",
+      "timestamp_utc": "2026-01-10T11:40:00Z",
+      "target_altitude_deg": 30.066295235689374,
+      "target_azimuth_deg": 128.68909722944505,
+      "sun_altitude_deg": -28.515831170327797,
+      "moon_altitude_deg": -52.9959085161917,
+      "moon_separation_deg": 110.29249656697937,
+      "moon_illumination_fraction": 0.5180618333417147,
+      "is_observable": true,
+      "rejection_reasons": []
+    },
+    {
+      "timestamp_local": "2026-01-10T19:50:00+08:00",
+      "timestamp_utc": "2026-01-10T11:50:00Z",
+      "target_altitude_deg": 31.54247463051589,
+      "target_azimuth_deg": 131.03231002190367,
+      "sun_altitude_deg": -30.425256877456345,
+      "moon_altitude_deg": -51.698496897117735,
+      "moon_separation_deg": 110.38603701822106,
+      "moon_illumination_fraction": 0.5173884482396247,
+      "is_observable": true,
+      "rejection_reasons": []
+    },
+    {
+      "timestamp_local": "2026-01-10T20:00:00+08:00",
+      "timestamp_utc": "2026-01-10T12:00:00Z",
+      "target_altitude_deg": 32.966124804957055,
+      "target_azimuth_deg": 133.45653513438702,
+      "sun_altitude_deg": -32.338400736978954,
+      "moon_altitude_deg": -50.33200831317042,
+      "moon_separation_deg": 110.4789376211634,
+      "moon_illumination_fraction": 0.5167151330710275,
+      "is_observable": true,
+      "rejection_reasons": []
+    },
+    {
+      "timestamp_local": "2026-01-10T20:10:00+08:00",
+      "timestamp_utc": "2026-01-10T12:10:00Z",
+      "target_altitude_deg": 34.33282706681829,
+      "target_azimuth_deg": 135.96546705052262,
+      "sun_altitude_deg": -34.25393922986506,
+      "moon_altitude_deg": -48.90383609814817,
+      "moon_separation_deg": 110.57115388619191,
+      "moon_illumination_fraction": 0.516041888829487,
+      "is_observable": true,
+      "rejection_reasons": []
+    },
+    {
+      "timestamp_local": "2026-01-10T20:20:00+08:00",
+      "timestamp_utc": "2026-01-10T12:20:00Z",
+      "target_altitude_deg": 35.637922619020074,
+      "target_azimuth_deg": 138.56231540043814,
+      "sun_altitude_deg": -36.17047721886505,
+      "moon_altitude_deg": -47.42071828931073,
+      "moon_separation_deg": 110.66264239063723,
+      "moon_illumination_fraction": 0.5153687165056114,
+      "is_observable": true,
+      "rejection_reasons": []
+    },
+    {
+      "timestamp_local": "2026-01-10T20:30:00+08:00",
+      "timestamp_utc": "2026-01-10T12:30:00Z",
+      "target_altitude_deg": 36.87653181450412,
+      "target_azimuth_deg": 141.249647149901,
+      "sun_altitude_deg": -38.08652720453753,
+      "moon_altitude_deg": -45.88875699158463,
+      "moon_separation_deg": 110.75336085176104,
+      "moon_illumination_fraction": 0.5146956170945682,
+      "is_observable": true,
+      "rejection_reasons": []
+    },
+    {
+      "timestamp_local": "2026-01-10T20:40:00+08:00",
+      "timestamp_utc": "2026-01-10T12:40:00Z",
+      "target_altitude_deg": 38.043584890011736,
+      "target_azimuth_deg": 144.02920928479014,
+      "sun_altitude_deg": -40.00048472282213,
+      "moon_altitude_deg": -44.31345489393111,
+      "moon_separation_deg": 110.84326820080587,
+      "moon_illumination_fraction": 0.5140225915791512,
+      "is_observable": true,
+      "rejection_reasons": []
+    },
+    {
+      "timestamp_local": "2026-01-10T20:50:00+08:00",
+      "timestamp_utc": "2026-01-10T12:50:00Z",
+      "target_altitude_deg": 39.13386608069733,
+      "target_azimuth_deg": 146.90173653381706,
+      "sun_altitude_deg": -41.910598893298236,
+      "moon_altitude_deg": -42.699761572790734,
+      "moon_separation_deg": 110.93232465167716,
+      "moon_illumination_fraction": 0.5133496409553371,
+      "is_observable": true,
+      "rejection_reasons": []
+    },
+    {
+      "timestamp_local": "2026-01-10T21:00:00+08:00",
+      "timestamp_utc": "2026-01-10T13:00:00Z",
+      "target_altitude_deg": 40.142072718828516,
+      "target_azimuth_deg": 149.8667517336648,
+      "sun_altitude_deg": -43.814936863121524,
+      "moon_altitude_deg": -41.052124282112956,
+      "moon_separation_deg": 111.02049177307626,
+      "moon_illumination_fraction": 0.5126767662026371,
+      "is_observable": true,
+      "rejection_reasons": []
+    },
+    {
+      "timestamp_local": "2026-01-10T21:10:00+08:00",
+      "timestamp_utc": "2026-01-10T13:10:00Z",
+      "target_altitude_deg": 41.062890330941414,
+      "target_azimuth_deg": 152.92236991678166,
+      "sun_altitude_deg": -45.71134055497251,
+      "moon_altitude_deg": -39.37453958639681,
+      "moon_separation_deg": 111.10773255439611,
+      "moon_illumination_fraction": 0.5120039683152491,
+      "is_observable": true,
+      "rejection_reasons": []
+    },
+    {
+      "timestamp_local": "2026-01-10T21:20:00+08:00",
+      "timestamp_utc": "2026-01-10T13:20:00Z",
+      "target_altitude_deg": 41.891083818811126,
+      "target_azimuth_deg": 156.06512072724055,
+      "sun_altitude_deg": -47.59737370119257,
+      "moon_altitude_deg": -37.670603507813965,
+      "moon_separation_deg": 111.19401147456128,
+      "moon_illumination_fraction": 0.5113312482738125,
+      "is_observable": true,
+      "rejection_reasons": []
+    },
+    {
+      "timestamp_local": "2026-01-10T21:30:00+08:00",
+      "timestamp_utc": "2026-01-10T13:30:00Z",
+      "target_altitude_deg": 42.621603528550054,
+      "target_azimuth_deg": 159.2898067706875,
+      "sun_altitude_deg": -49.47025661347167,
+      "moon_altitude_deg": -35.9435587799457,
+      "moon_separation_deg": 111.27929456609309,
+      "moon_illumination_fraction": 0.5106586070642666,
+      "is_observable": true,
+      "rejection_reasons": []
+    },
+    {
+      "timestamp_local": "2026-01-10T21:40:00+08:00",
+      "timestamp_utc": "2026-01-10T13:40:00Z",
+      "target_altitude_deg": 43.249703428621835,
+      "target_azimuth_deg": 162.58941722770226,
+      "sun_altitude_deg": -51.326785483781194,
+      "moon_altitude_deg": -34.19633848591643,
+      "moon_separation_deg": 111.36354947920027,
+      "moon_illumination_fraction": 0.5099860456640412,
+      "is_observable": true,
+      "rejection_reasons": []
+    },
+    {
+      "timestamp_local": "2026-01-10T21:50:00+08:00",
+      "timestamp_utc": "2026-01-10T13:50:00Z",
+      "target_altitude_deg": 43.77106686322433,
+      "target_azimuth_deg": 165.95511568413465,
+      "sun_altitude_deg": -53.16323223826441,
+      "moon_altitude_deg": -32.43160579173688,
+      "moon_separation_deg": 111.44674554245557,
+      "moon_illumination_fraction": 0.5093135650628643,
+      "is_observable": true,
+      "rejection_reasons": []
+    },
+    {
+      "timestamp_local": "2026-01-10T22:00:00+08:00",
+      "timestamp_utc": "2026-01-10T14:00:00Z",
+      "target_altitude_deg": 44.18193364150857,
+      "target_azimuth_deg": 169.37631795738733,
+      "sun_altitude_deg": -54.97522010323375,
+      "moon_altitude_deg": -30.65178978772185,
+      "moon_separation_deg": 111.52885382275029,
+      "moon_illumination_fraction": 0.5086411662357638,
+      "is_observable": true,
+      "rejection_reasons": []
+    },
+    {
+      "timestamp_local": "2026-01-10T22:10:00+08:00",
+      "timestamp_utc": "2026-01-10T14:10:00Z",
+      "target_altitude_deg": 44.479220855091754,
+      "target_azimuth_deg": 172.84086940172995,
+      "sun_altitude_deg": -56.75756919449699,
+      "moon_altitude_deg": -28.859117619580427,
+      "moon_separation_deg": 111.60984718345583,
+      "moon_illumination_fraction": 0.5079688501629801,
+      "is_observable": true,
+      "rejection_reasons": []
+    },
+    {
+      "timestamp_local": "2026-01-10T22:20:00+08:00",
+      "timestamp_utc": "2026-01-10T14:20:00Z",
+      "target_altitude_deg": 44.660629098679316,
+      "target_azimuth_deg": 176.33532205486827,
+      "sun_altitude_deg": -58.504105849699044,
+      "moon_altitude_deg": -27.055643189899236,
+      "moon_separation_deg": 111.68970033834893,
+      "moon_illumination_fraction": 0.5072966178232626,
+      "is_observable": true,
+      "rejection_reasons": []
+    },
+    {
+      "timestamp_local": "2026-01-10T22:30:00+08:00",
+      "timestamp_utc": "2026-01-10T14:30:00Z",
+      "target_altitude_deg": 44.724725963906,
+      "target_azimuth_deg": 179.84530108817836,
+      "sun_altitude_deg": -60.20742959422645,
+      "moon_altitude_deg": -25.243272764640476,
+      "moon_separation_deg": 111.76838990507976,
+      "moon_illumination_fraction": 0.5066244701928293,
+      "is_observable": true,
+      "rejection_reasons": []
+    },
+    {
+      "timestamp_local": "2026-01-10T22:40:00+08:00",
+      "timestamp_utc": "2026-01-10T14:40:00Z",
+      "target_altitude_deg": 44.67099991579485,
+      "target_azimuth_deg": 183.3559390539647,
+      "sun_altitude_deg": -61.858633537444845,
+      "moon_altitude_deg": -23.423787825961405,
+      "moon_separation_deg": 111.84589445500255,
+      "moon_illumination_fraction": 0.5059524082482172,
+      "is_observable": true,
+      "rejection_reasons": []
+    },
+    {
+      "timestamp_local": "2026-01-10T22:50:00+08:00",
+      "timestamp_utc": "2026-01-10T14:50:00Z",
+      "target_altitude_deg": 44.49987988189843,
+      "target_azimuth_deg": 186.8523474260923,
+      "sun_altitude_deg": -63.446979388517384,
+      "moon_altitude_deg": -21.5988655090407,
+      "moon_separation_deg": 111.92219456093605,
+      "moon_illumination_fraction": 0.505280432962196,
+      "is_observable": true,
+      "rejection_reasons": []
+    },
+    {
+      "timestamp_local": "2026-01-10T23:00:00+08:00",
+      "timestamp_utc": "2026-01-10T15:00:00Z",
+      "target_altitude_deg": 44.2127188138158,
+      "target_azimuth_deg": 190.32008975562863,
+      "sun_altitude_deg": -64.95954006402326,
+      "moon_altitude_deg": -19.770096942709618,
+      "moon_separation_deg": 111.99727284164473,
+      "moon_illumination_fraction": 0.5046085453131385,
+      "is_observable": true,
+      "rejection_reasons": []
+    },
+    {
+      "timestamp_local": "2026-01-10T23:10:00+08:00",
+      "timestamp_utc": "2026-01-10T15:10:00Z",
+      "target_altitude_deg": 43.81174268300799,
+      "target_azimuth_deg": 193.74562053558267,
+      "sun_altitude_deg": -66.38084531944888,
+      "moon_altitude_deg": -17.939003786824262,
+      "moon_separation_deg": 112.07111400359189,
+      "moon_illumination_fraction": 0.5039367462686,
+      "is_observable": true,
+      "rejection_reasons": []
+    },
+    {
+      "timestamp_local": "2026-01-10T23:20:00+08:00",
+      "timestamp_utc": "2026-01-10T15:20:00Z",
+      "target_altitude_deg": 43.29996934577224,
+      "target_azimuth_deg": 197.1166586387972,
+      "sun_altitude_deg": -67.69260403057129,
+      "moon_altitude_deg": -16.107053234676886,
+      "moon_separation_deg": 112.14370487936937,
+      "moon_illumination_fraction": 0.5032650368025339,
+      "is_observable": true,
+      "rejection_reasons": []
+    },
+    {
+      "timestamp_local": "2026-01-10T23:30:00+08:00",
+      "timestamp_utc": "2026-01-10T15:30:00Z",
+      "target_altitude_deg": 42.681104009187,
+      "target_azimuth_deg": 200.42247292059525,
+      "sun_altitude_deg": -68.87363350812707,
+      "moon_altitude_deg": -14.275671720544699,
+      "moon_separation_deg": 112.21503446331953,
+      "moon_illumination_fraction": 0.5025934178836168,
+      "is_observable": true,
+      "rejection_reasons": []
+    },
+    {
+      "timestamp_local": "2026-01-10T23:40:00+08:00",
+      "timestamp_utc": "2026-01-10T15:40:00Z",
+      "target_altitude_deg": 41.95941936123877,
+      "target_azimuth_deg": 203.6540684561599,
+      "sun_altitude_deg": -69.90019433013201,
+      "moon_altitude_deg": -12.446257545143673,
+      "moon_separation_deg": 112.28509394279607,
+      "moon_illumination_fraction": 0.5019218904834655,
+      "is_observable": true,
+      "rejection_reasons": []
+    },
+    {
+      "timestamp_local": "2026-01-10T23:50:00+08:00",
+      "timestamp_utc": "2026-01-10T15:50:00Z",
+      "target_altitude_deg": 41.13962871282563,
+      "target_azimuth_deg": 206.80427286519864,
+      "sun_altitude_deg": -70.7469775780338,
+      "moon_altitude_deg": -10.620192611816673,
+      "moon_separation_deg": 112.35387672772825,
+      "moon_illumination_fraction": 0.5012504555652647,
+      "is_observable": true,
+      "rejection_reasons": []
+    },
+    {
+      "timestamp_local": "2026-01-11T00:00:00+08:00",
+      "timestamp_utc": "2026-01-10T16:00:00Z",
+      "target_altitude_deg": 40.226759852937136,
+      "target_azimuth_deg": 209.86773150699347,
+      "sun_altitude_deg": -71.38895304944566,
+      "moon_altitude_deg": -8.79885343589631,
+      "moon_separation_deg": 112.42137847327682,
+      "moon_illumination_fraction": 0.5005791140999308,
+      "is_observable": true,
+      "rejection_reasons": []
+    },
+    {
+      "timestamp_local": "2026-01-11T00:10:00+08:00",
+      "timestamp_utc": "2026-01-10T16:10:00Z",
+      "target_altitude_deg": 39.226035995235065,
+      "target_azimuth_deg": 212.84082689606257,
+      "sun_altitude_deg": -71.80407540272977,
+      "moon_altitude_deg": -6.983621581284678,
+      "moon_separation_deg": 112.4875971024499,
+      "moon_illumination_fraction": 0.49990786705221385,
+      "is_observable": true,
+      "rejection_reasons": []
+    },
+    {
+      "timestamp_local": "2026-01-11T00:20:00+08:00",
+      "timestamp_utc": "2026-01-10T16:20:00Z",
+      "target_altitude_deg": 38.1427685056403,
+      "target_azimuth_deg": 215.7215411328987,
+      "sun_altitude_deg": -71.97643583029411,
+      "moon_altitude_deg": -5.175893647463319,
+      "moon_separation_deg": 112.55253282195663,
+      "moon_illumination_fraction": 0.49923671538836784,
+      "is_observable": true,
+      "rejection_reasons": []
+    },
+    {
+      "timestamp_local": "2026-01-11T00:30:00+08:00",
+      "timestamp_utc": "2026-01-10T16:30:00Z",
+      "target_altitude_deg": 36.98226434043229,
+      "target_azimuth_deg": 218.50928074204805,
+      "sun_altitude_deg": -71.89900144509369,
+      "moon_altitude_deg": -3.377090921479285,
+      "moon_separation_deg": 112.61618813582432,
+      "moon_illumination_fraction": 0.4985656600670801,
+      "is_observable": true,
+      "rejection_reasons": []
+    },
+    {
+      "timestamp_local": "2026-01-11T00:40:00+08:00",
+      "timestamp_utc": "2026-01-10T16:40:00Z",
+      "target_altitude_deg": 35.749749519237405,
+      "target_azimuth_deg": 221.20468173856838,
+      "sun_altitude_deg": -71.57495316842629,
+      "moon_altitude_deg": -1.5886687875618288,
+      "moon_separation_deg": 112.6785678522245,
+      "moon_illumination_fraction": 0.497894702057845,
+      "is_observable": true,
+      "rejection_reasons": []
+    },
+    {
+      "timestamp_local": "2026-01-11T00:50:00+08:00",
+      "timestamp_utc": "2026-01-10T16:50:00Z",
+      "target_altitude_deg": 34.45030864647242,
+      "target_azimuth_deg": 223.80940982368523,
+      "sun_altitude_deg": -71.0170701743318,
+      "moon_altitude_deg": 0.18787401955827804,
+      "moon_separation_deg": 112.73967909020901,
+      "moon_illumination_fraction": 0.4972238423143662,
+      "is_observable": true,
+      "rejection_reasons": []
+    },
+    {
+      "timestamp_local": "2026-01-11T01:00:00+08:00",
+      "timestamp_utc": "2026-01-10T17:00:00Z",
+      "target_altitude_deg": 33.08883953457982,
+      "target_azimuth_deg": 226.32596710532692,
+      "sun_altitude_deg": -70.24542011306171,
+      "moon_altitude_deg": 1.9509862644897482,
+      "moon_separation_deg": 112.79953127673828,
+      "moon_illumination_fraction": 0.4965530818031448,
+      "is_observable": true,
+      "rejection_reasons": []
+    },
+    {
+      "timestamp_local": "2026-01-11T01:10:00+08:00",
+      "timestamp_utc": "2026-01-10T17:10:00Z",
+      "target_altitude_deg": 31.670021365116032,
+      "target_azimuth_deg": 228.75751324124406,
+      "sun_altitude_deg": -69.28424571960826,
+      "moon_altitude_deg": 3.6990551049084615,
+      "moon_separation_deg": 112.85813614400455,
+      "moon_illumination_fraction": 0.4958824214810481,
+      "is_observable": true,
+      "rejection_reasons": []
+    },
+    {
+      "timestamp_local": "2026-01-11T01:20:00+08:00",
+      "timestamp_utc": "2026-01-10T17:20:00Z",
+      "target_altitude_deg": 30.198294502070482,
+      "target_azimuth_deg": 231.10770579492788,
+      "sun_altitude_deg": -68.15901333923219,
+      "moon_altitude_deg": 5.430397009147909,
+      "moon_separation_deg": 112.91550771908649,
+      "moon_illumination_fraction": 0.4952118623059872,
+      "is_observable": true,
+      "rejection_reasons": []
+    },
+    {
+      "timestamp_local": "2026-01-11T01:30:00+08:00",
+      "timestamp_utc": "2026-01-10T17:30:00Z",
+      "target_altitude_deg": 28.677849979677738,
+      "target_azimuth_deg": 233.3805620715062,
+      "sun_altitude_deg": -66.8942181339984,
+      "moon_altitude_deg": 7.143248683747243,
+      "moon_separation_deg": 112.9716623100318,
+      "moon_illumination_fraction": 0.49454140523392476,
+      "is_observable": false,
+      "rejection_reasons": [
+        "target_below_minimum_altitude"
+      ]
+    },
+    {
+      "timestamp_local": "2026-01-11T01:40:00+08:00",
+      "timestamp_utc": "2026-01-10T17:40:00Z",
+      "target_altitude_deg": 27.11262675660925,
+      "target_azimuth_deg": 235.58034281066648,
+      "sun_altitude_deg": -65.51208564712431,
+      "moon_altitude_deg": 8.835758025953968,
+      "moon_separation_deg": 113.02661848714975,
+      "moon_illumination_fraction": 0.4938710512264775,
+      "is_observable": false,
+      "rejection_reasons": [
+        "target_below_minimum_altitude"
+      ]
+    },
+    {
+      "timestamp_local": "2026-01-11T01:50:00+08:00",
+      "timestamp_utc": "2026-01-10T17:50:00Z",
+      "target_altitude_deg": 25.50631499925753,
+      "target_azimuth_deg": 237.71145681207884,
+      "sun_altitude_deg": -64.03201755078783,
+      "moon_altitude_deg": 10.505975141136627,
+      "moon_separation_deg": 113.08039705888896,
+      "moon_illumination_fraction": 0.49320080122872967,
+      "is_observable": false,
+      "rejection_reasons": [
+        "target_below_minimum_altitude"
+      ]
+    },
+    {
+      "timestamp_local": "2026-01-11T02:00:00+08:00",
+      "timestamp_utc": "2026-01-10T18:00:00Z",
+      "target_altitude_deg": 23.862363880805443,
+      "target_azimuth_deg": 239.778384761948,
+      "sun_altitude_deg": -62.47053434272436,
+      "moon_altitude_deg": 12.151843497673571,
+      "moon_separation_deg": 113.13302104401295,
+      "moon_illumination_fraction": 0.49253065620496805,
+      "is_observable": false,
+      "rejection_reasons": [
+        "target_below_minimum_altitude"
+      ]
+    }
+  ],
+  "windows": [
+    {
+      "start_local": "2026-01-10T19:40:00+08:00",
+      "end_local": "2026-01-11T01:20:00+08:00",
+      "start_utc": "2026-01-10T11:40:00Z",
+      "end_utc": "2026-01-10T17:20:00Z",
+      "sample_count": 35,
+      "peak_target_altitude_deg": 44.724725963906
+    }
+  ]
+}
